@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "dist-electron",
+    "rootDir": ".",
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "esModuleInterop": true,
+    "declaration": false,
+    "sourceMap": true,
+    "types": ["node"]
+  },
+  "include": [
+    "electron/**/*",
+    "guardian/src/**/*",
+    "shared/**/*",
+    "hands/mock/**/*",
+    "hands/src/**/*",
+    "writer/**/*"
+  ],
+  "exclude": [
+    "writer/**/*.test.ts",
+    "electron/**/*.test.ts",
+    "hands/**/*.test.ts"
+  ]
+}

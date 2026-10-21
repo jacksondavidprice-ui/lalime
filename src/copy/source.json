@@ -1,0 +1,130 @@
+{
+  "errors.signInRequired": {
+    "intent": "Tell the person they must sign in before asking for help",
+    "facts": ["ChatGPT or OpenAI API key required", "no shared login"]
+  },
+  "errors.codexMissing": {
+    "intent": "Explain Codex CLI is missing in plain language",
+    "facts": ["install once", "codex login or API key"]
+  },
+  "errors.handsMissing": {
+    "intent": "Explain computer control is off because Hands.exe is missing",
+    "facts": ["Windows only", "rebuild with npm run build", "restart Lalime"]
+  },
+  "errors.generic": {
+    "intent": "Soft error without blame",
+    "facts": ["something went wrong", "try again"]
+  },
+  "onboarding.welcome.title": {
+    "intent": "Hero title for first slide",
+    "facts": ["computer help", "done for you"]
+  },
+  "onboarding.welcome.body": {
+    "intent": "Explain what Lalime does for older adults",
+    "facts": ["plain English", "clicks and fixes", "no menu hunting"]
+  },
+  "onboarding.guardian.title": {
+    "intent": "Reassure that dangerous actions need permission",
+    "facts": ["asks before risky steps", "blocks dangerous commands", "undo nearby"]
+  },
+  "onboarding.guardian.body": {
+    "intent": "Guardian explanation",
+    "facts": ["plain English ask", "dangerous blocked", "Recycle Bin undo"]
+  },
+  "onboarding.signin.title": {
+    "intent": "Ask them to use their own account",
+    "facts": ["own ChatGPT or API key", "no shared account"]
+  },
+  "onboarding.signin.body": {
+    "intent": "Credentials explanation",
+    "facts": ["ChatGPT or OpenAI key", "never ships shared login"]
+  },
+  "onboarding.writer.title": {
+    "intent": "Optional clearer writing with Anthropic",
+    "facts": ["optional", "Anthropic key", "falls back without it"]
+  },
+  "onboarding.writer.body": {
+    "intent": "Explain BYO Anthropic key for Deliberate writing",
+    "facts": ["optional", "sk-ant-", "stored on this PC only", "works without it"]
+  },
+  "settings.signInHeading": {
+    "intent": "Settings heading for sign-in",
+    "facts": []
+  },
+  "settings.signInBlurb": {
+    "intent": "Explain own credentials",
+    "facts": ["own ChatGPT or OpenAI key", "no shared login"]
+  },
+  "settings.writerHeading": {
+    "intent": "Settings heading for optional writing",
+    "facts": ["optional"]
+  },
+  "settings.writerBlurb": {
+    "intent": "One sentence on better writing",
+    "facts": ["Anthropic key", "clearer replies", "Codex still does the work"]
+  },
+  "settings.writerPlaceholder": {
+    "intent": "Placeholder for Anthropic key field",
+    "facts": ["sk-ant-"]
+  },
+  "settings.writerSaved": {
+    "intent": "Confirm key saved without showing the key",
+    "facts": ["saved on this PC", "hint only"]
+  },
+  "settings.writerRemoved": {
+    "intent": "Confirm key removed",
+    "facts": []
+  },
+  "settings.writerCheckOk": {
+    "intent": "Key validated",
+    "facts": []
+  },
+  "empty.title": {
+    "intent": "Empty chat prompt",
+    "facts": []
+  },
+  "empty.body": {
+    "intent": "Reassure about plan, ask, undo",
+    "facts": ["everyday words", "shows plan", "asks before risky", "Undo nearby"]
+  },
+  "gate.title": {
+    "intent": "Signed-out gate title",
+    "facts": []
+  },
+  "gate.body": {
+    "intent": "Explain sign-in requirement",
+    "facts": ["ChatGPT or OpenAI key", "no demo bot"]
+  },
+  "chips.downloads": {
+    "intent": "Starter chip for Downloads tidy",
+    "facts": ["Downloads", "sort", "clean up"]
+  },
+  "chips.forms": {
+    "intent": "Starter chip for forms and spreadsheets",
+    "facts": ["forms", "spreadsheets", "copy between apps"]
+  },
+  "chips.programs": {
+    "intent": "Starter chip for opening programs",
+    "facts": ["open programs", "click buttons", "type text"]
+  },
+  "chips.wifi": {
+    "intent": "Starter chip for Wi-Fi help",
+    "facts": ["Wi-Fi dropping"]
+  },
+  "approval.undoable": {
+    "intent": "Default undo note on approval card",
+    "facts": ["can undo afterward"]
+  },
+  "approval.hold": {
+    "intent": "Extra caution for ask_hold",
+    "facts": ["more serious", "take a second"]
+  },
+  "blocked.gotIt": {
+    "intent": "Dismiss blocked notice",
+    "facts": []
+  },
+  "blocked.eyebrow": {
+    "intent": "Blocked card label",
+    "facts": ["Guardian blocked"]
+  }
+}

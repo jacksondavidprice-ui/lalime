@@ -1,0 +1,34 @@
+appId: com.lalime.app
+productName: Lalime
+copyright: Copyright © 2026 Jackson Price
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - package.json
+  # Window icon for unpackaged-style paths inside the asar (NSIS also uses buildResources).
+  - build/icon.png
+extraResources:
+  - from: hands/windows/Hands/bin/Release/net8.0-windows
+    to: hands
+    filter:
+      - Hands.exe
+      - "**/*.dll"
+      - "**/*.json"
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: Lalime-Setup-${version}.${ext}
+  # Unsigned is OK for contest demo / SmartScreen "More info → Run anyway"
+nsis:
+  oneClick: true
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Lalime
+  uninstallDisplayName: Lalime
+asar: true

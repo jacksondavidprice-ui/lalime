@@ -1,0 +1,49 @@
+import { EventEmitter } from "node:events";
+import { expect, it, vi } from "vitest";
+import { DEVELOPER_INSTRUCTIONS, LALIME_DYNAMIC_TOOLS } from "../electron/main/agent-prompt.js";
+import { LiveAgentHost } from "../electron/main/live-agent.js";
+import { MockHands } from "../hands/mock/index.js";
+import type { PendingApproval } from "../shared/types.js";
+
+const pages = ["startupapps", "appsfeatures", "storagesense", "storagepolicies", "troubleshoot", "network-status", "windowsupdate", "printers"];
+it.each(pages)("makes the Settings repair route discoverable to the model: %s", (page) => {
+  const tool = LALIME_DYNAMIC_TOOLS.find((tool) => tool.name === "lalime_open_settings")!;
+  expect(tool.description).toContain(`ms-settings:${page}`);
+});
+
+it("distinguishes opening repair Settings from executing or verifying a repair", () => {
+  expect(DEVELOPER_INSTRUCTIONS).toMatch(/opening a Settings page is not a completed repair/i);
+  expect(DEVELOPER_INSTRUCTIONS).toMatch(/do not type repair commands into a terminal/i);
+  expect(DEVELOPER_INSTRUCTIONS).toContain("Use lalime_run_powershell");
+  expect(DEVELOPER_INSTRUCTIONS).toMatch(/user must answer.*UAC/i);
+});
+
+class Client extends EventEmitter {
+  startThread = vi.fn(async () => "thread");
+  startTurn = vi.fn(async () => ({ turnId: "turn" }));
+  interruptTurn = vi.fn(async () => undefined);
+  respondApproval = vi.fn(); respondFileChangeApproval = vi.fn(); respondToolCall = vi.fn();
+}
+const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+it.each(pages)("keeps %s behind a Guardian card before invoking Hands", async (page) => {
+  const client = new Client(); const hands = new MockHands();
+  const open = vi.spyOn(hands, "openSettings");
+  const host = new LiveAgentHost(client, hands);
+  const cards: PendingApproval[] = [];
+  host.on("approvalNeeded", (card) => cards.push(card));
+  try {
+    await host.runTurn("Open the requested repair Settings page");
+    client.emit("serverRequest", { id: 1, method: "item/tool/call", params: {
+      tool: "lalime_open_settings", arguments: { uri: `ms-settings:${page}` },
+    } });
+    await flush();
+    expect(open).not.toHaveBeenCalled();
+    expect(cards).toHaveLength(1);
+    expect(cards[0].decision).toMatchObject({ kind: "ask", tier: 2 });
+    host.respondApproval("do_it", cards[0].action.id);
+    await flush();
+    expect(open).toHaveBeenCalledExactlyOnceWith(`ms-settings:${page}`);
+    expect(client.respondToolCall).toHaveBeenCalledWith(1, expect.objectContaining({ success: true }));
+  } finally { await host.stop(); }
+});

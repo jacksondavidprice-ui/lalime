@@ -24,6 +24,7 @@ const api: LalimeApi = {
   cancelApprovalHold: (actionId) => ipcRenderer.invoke(IPC.cancelApprovalHold, actionId),
   revokeTaskGrant: (grantId) => ipcRenderer.invoke(IPC.revokeTaskGrant, grantId),
   connectProvider: (apiKey) => ipcRenderer.invoke(IPC.connectProvider, apiKey),
+  retryConnectionCheck: () => ipcRenderer.invoke(IPC.retryConnectionCheck),
   disconnect: () => ipcRenderer.invoke(IPC.disconnect),
   copyText: (text) => ipcRenderer.invoke(IPC.copyText, text),
   openRecoveryFolder: () => ipcRenderer.invoke(IPC.openRecoveryFolder),

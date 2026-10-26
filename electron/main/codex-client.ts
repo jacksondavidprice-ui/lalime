@@ -20,7 +20,7 @@ export interface CodexClientOptions {
   args?: string[];
   /** App-owned configuration and account directory. No user config is copied. */
   codexHome?: string;
-  /** Maximum time to wait for a JSON-RPC response. */
+  /** Maximum time for control RPC replies. Model turn starts have no deadline. */
   requestTimeoutMs?: number;
   /** Injected stdio for tests (fake server). */
   transport?: {
@@ -67,7 +67,7 @@ export class CodexAppServerClient extends EventEmitter {
   private nextId = 1;
   private pending = new Map<
     number | string,
-    { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }
+    { resolve: (v: unknown) => void; reject: (e: Error) => void; timer?: ReturnType<typeof setTimeout>; turnThreadId?: string }
   >();
   private stdin: NodeJS.WritableStream | null = null;
   private started = false;
@@ -271,6 +271,12 @@ export class CodexAppServerClient extends EventEmitter {
   }
 
   async interruptTurn(threadId: string, turnId?: string): Promise<void> {
+    for (const [id, pending] of this.pending) {
+      if (pending.turnThreadId !== threadId) continue;
+      this.pending.delete(id);
+      clearTimeout(pending.timer);
+      pending.reject(new Error("Codex turn stopped"));
+    }
     try {
       await this.request("turn/interrupt", { threadId, turnId });
     } catch {
@@ -303,11 +309,13 @@ export class CodexAppServerClient extends EventEmitter {
   request(method: string, params?: unknown): Promise<unknown> {
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
+      const timer = method === "turn/start" ? undefined : setTimeout(() => {
         this.pending.delete(id);
         reject(new Error(`Codex request timed out: ${method}`));
       }, this.options.requestTimeoutMs ?? 30_000);
-      this.pending.set(id, { resolve, reject, timer });
+      const turnThreadId = method === "turn/start" && params && typeof params === "object" && "threadId" in params
+        ? String(params.threadId) : undefined;
+      this.pending.set(id, { resolve, reject, timer, turnThreadId });
       try {
         this.send({ id, method, params });
       } catch (error) {

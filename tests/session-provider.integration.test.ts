@@ -23,7 +23,13 @@ describe("complete session over a local HTTP provider", () => {
     server = createServer(async (request, response) => {
       let body = "";
       for await (const chunk of request) body += chunk;
-      requests.push(JSON.parse(body));
+      const parsedBody = JSON.parse(body);
+      if (parsedBody.max_tokens === 128 && !parsedBody.tools) {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: "OK" }, finish_reason: "stop" }] }));
+        return;
+      }
+      requests.push(parsedBody);
       const message = requests.length === 1
         ? { role: "assistant", content: null, tool_calls: [{ id: "tool-1", type: "function", function: { name: "lalime_open_settings", arguments: JSON.stringify({ uri: "ms-settings:display" }) } }] }
         : { role: "assistant", content: requests.length === 2 ? "Display settings are open." : "We opened Display settings." };

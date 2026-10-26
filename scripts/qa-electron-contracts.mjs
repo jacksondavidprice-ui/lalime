@@ -29,6 +29,7 @@ const errors = [];
 const checks = [];
 let pending = [];
 let waiting;
+let connectionChecks = 0;
 const server = createServer(async (request, response) => {
   try {
     assert.equal(request.method, "POST");
@@ -39,6 +40,12 @@ const server = createServer(async (request, response) => {
     for await (const chunk of request) { body += chunk; assert.ok(body.length < 1_000_000); }
     const parsed = JSON.parse(body);
     assert.equal(parsed.model, "explicit-local-contract-fixture");
+    // Batch 13: Connect sends one tool-free "Reply with OK." check before the conversation starts.
+    if (!parsed.tools?.length && parsed.messages?.at(-1)?.content === "Reply with OK.") {
+      connectionChecks++;
+      response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ choices: [{ message: { role: "assistant", content: "OK" }, finish_reason: "stop" }] }));
+      return;
+    }
     requests.push(parsed);
     const item = { parsed, response };
     if (waiting) { const resolve = waiting; waiting = undefined; resolve(item); }

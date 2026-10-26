@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -28,20 +28,25 @@ describe("private and bounded settings", () => {
   });
   it("starts with computer control and screen sharing disabled", () => {
     const snapshot = session().getSnapshot();
-    expect(snapshot.settings).toMatchObject({ allowComputerControl: false, allowScreenCapture: false, maxToolCalls: 12 });
+    expect(snapshot.settings).toMatchObject({ allowComputerControl: false, allowScreenCapture: false });
+  });
+  it("drops a saved tool limit without dropping other settings", () => {
+    session();
+    writeFileSync(path.join(electron.directory, "settings.json"), JSON.stringify({ maxToolCalls: 12 }));
+    expect(new SessionController(new MockHands()).getSnapshot().settings).not.toHaveProperty("maxToolCalls");
   });
   it("persists validated preferences without accepting credential fields", () => {
     const controller = session();
-    expect(controller.updateSettings({ model: "my-model", maxToolCalls: 4, instructions: "Use short answers." }).ok).toBe(true);
+    expect(controller.updateSettings({ model: "my-model", instructions: "Use short answers." }).ok).toBe(true);
     const restored = new SessionController(new MockHands());
-    expect(restored.getSnapshot().settings).toMatchObject({ model: "my-model", maxToolCalls: 4 });
+    expect(restored.getSnapshot().settings).toMatchObject({ model: "my-model" });
     expect(controller.updateSettings({ apiKey: "private-test-value" }).ok).toBe(false);
     expect(JSON.stringify(controller.getSnapshot())).not.toContain("private-test-value");
   });
   it("rejects invalid limits atomically", () => {
     const controller = session();
     const before = controller.getSnapshot().settings;
-    expect(controller.updateSettings({ model: "changed", maxToolCalls: -1 }).ok).toBe(false);
+    expect(controller.updateSettings({ model: "changed", maxTokens: -1 }).ok).toBe(false);
     expect(controller.getSnapshot().settings).toEqual(before);
   });
 });

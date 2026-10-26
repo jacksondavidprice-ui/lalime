@@ -61,7 +61,7 @@ describe("plan handling", () => {
 });
 
 describe("guards and status", () => {
-  it("refuses the third identical call", () => {
+  it("advises on the third consecutive identical call", () => {
     const g = new RepeatGuard();
     const args = { name: "OK", windowTitle: "Settings" };
     expect(g.check("lalime_click", args)).toBeNull();

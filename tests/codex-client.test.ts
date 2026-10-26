@@ -203,3 +203,43 @@ describe("Codex safety and account requests", () => {
     expect(messages.some((message) => message.method === "account/logout")).toBe(true);
   });
 });
+
+it("does not expire a queued turn start at the transport request deadline", async () => {
+  vi.useFakeTimers();
+  const { client, stdin, stdout } = setup(true, 25);
+  await client.start();
+  const originalWrite = stdin.write.bind(stdin);
+  let requestId: number | undefined;
+  vi.spyOn(stdin, "write").mockImplementation(((chunk: any) => {
+    const message = JSON.parse(String(chunk));
+    if (message.method === "turn/start") { requestId = message.id; return true; }
+    return originalWrite(chunk);
+  }) as any);
+  let settled = false;
+  const pending = client.startTurn("thread-test", "Diagnose the printer").then(
+    (result) => { settled = true; return result; },
+    (error) => { settled = true; return { error }; },
+  );
+  await vi.advanceTimersByTimeAsync(3_600_000);
+  try { expect(settled).toBe(false); }
+  finally { stdout.write(JSON.stringify({ id: requestId, result: { turn: { id: "long-turn" } } }) + "\n"); }
+  expect(await pending).toEqual({ turnId: "long-turn" });
+});
+it("cancels a queued turn start when Stop interrupts its thread", async () => {
+  const { client, stdin } = setup(true, 1000);
+  await client.start();
+  const originalWrite = stdin.write.bind(stdin);
+  vi.spyOn(stdin, "write").mockImplementation(((chunk: any) => {
+    const message = JSON.parse(String(chunk));
+    return message.method === "turn/start" ? true : originalWrite(chunk);
+  }) as any);
+  let outcome = "pending";
+  const pending = client.startTurn("thread-test", "Diagnose").then(
+    () => { outcome = "completed"; },
+    () => { outcome = "cancelled"; },
+  );
+  await client.interruptTurn("thread-test");
+  await Promise.resolve();
+  try { expect(outcome).toBe("cancelled"); }
+  finally { client.stop(); await pending; }
+});

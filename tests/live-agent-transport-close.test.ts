@@ -68,6 +68,6 @@ describe("provider transport termination", () => {
     host.on("status", status);
     await host.runTurn("Help");
     expect(() => client.emit("turn/completed", { turn: { id: "turn", status: "failed" } })).not.toThrow();
-    expect(status.mock.calls.at(-1)?.[0]).toMatch(/could not complete/i);
+    expect(status.mock.calls.at(-1)?.[0]).toMatch(/problem talking to the AI service/i);
   });
 });

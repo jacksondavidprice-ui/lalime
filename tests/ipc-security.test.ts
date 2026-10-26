@@ -42,4 +42,14 @@ describe("IPC trust boundary", () => {
     handlers.get(IPC.sendMessage)!({ sender: contents, senderFrame: frame }, "hello");
     expect(controller.sendMessage).toHaveBeenCalledWith("hello");
   });
+  it("retries connection checks only from the main frame with no supplied arguments", async () => {
+    controller.retryConnectionCheck = vi.fn(async () => ({ ok: true }));
+    const retry = handlers.get("lalime:retryConnectionCheck");
+    expect(retry).toBeTypeOf("function");
+    expect(() => retry!({ sender: {}, senderFrame: frame })).toThrow();
+    expect(() => retry!({ sender: contents, senderFrame: frame }, "untrusted-model")).toThrow();
+    expect(controller.retryConnectionCheck).not.toHaveBeenCalled();
+    expect(await retry!({ sender: contents, senderFrame: frame })).toEqual({ ok: true });
+    expect(controller.retryConnectionCheck).toHaveBeenCalledExactlyOnceWith();
+  });
 });

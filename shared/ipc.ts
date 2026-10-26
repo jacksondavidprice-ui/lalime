@@ -35,6 +35,7 @@ export const IPC = {
   writerCheckKey: "lalime:writerCheckKey",
   updateSettings: "lalime:updateSettings",
   connectProvider: "lalime:connectProvider",
+  retryConnectionCheck: "lalime:retryConnectionCheck",
   disconnect: "lalime:disconnect",
   copyText: "lalime:copyText",
   openRecoveryFolder: "lalime:openRecoveryFolder",
@@ -63,6 +64,7 @@ export interface LalimeApi {
   revokeTaskGrant?: (grantId: string) => Promise<boolean>;
   updateSettings: (settings: Partial<import("./settings.js").AppSettings>) => Promise<{ ok: boolean; message?: string }>;
   connectProvider: (apiKey?: string) => Promise<{ ok: boolean; message?: string }>;
+  retryConnectionCheck?: () => Promise<{ ok: boolean; message?: string }>;
   disconnect: () => Promise<void>;
   copyText: (text: string) => Promise<void>;
   openRecoveryFolder?: () => Promise<{ ok: boolean; message?: string }>;

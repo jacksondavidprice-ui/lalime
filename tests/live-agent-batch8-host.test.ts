@@ -19,7 +19,7 @@ afterEach(async () => { for (const host of hosts.splice(0)) await host.stop(); v
 async function fixture() {
   const client = new Client();
   const hands = new MockHands();
-  const host = new LiveAgentHost(client, hands, { allowComputerControl: true, maxToolCalls: 1000 });
+  const host = new LiveAgentHost(client, hands, { allowComputerControl: true });
   hosts.push(host);
   const cards: PendingApproval[] = [];
   const queues: Array<{ count: number; entries: readonly ApprovalQueueEntry[] }> = [];

@@ -168,6 +168,8 @@ export interface HandsStatus {
 }
 
 export interface AppSnapshot {
+  connection?: import("./connection.js").ConnectionCheck;
+  repairPlan?: import("./repair-plan.js").RepairPlan;
   taskGrants?: TaskGrant[];
   /** Exact pending count; it can exceed the number of preview entries. */
   pendingApprovalCount?: number;

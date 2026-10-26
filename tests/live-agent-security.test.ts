@@ -135,15 +135,14 @@ describe("live agent security boundaries", () => {
     expect(f.client.respondToolCall.mock.calls[0][1].success).toBe(true);
   });
 
-  it("passes model and custom instructions and limits tool calls per turn", async () => {
-    const f = await fixture({ model: "chosen-model", instructions: "Use concise replies.", maxToolCalls: 1 });
+  it("passes model and custom instructions without a per-turn tool cap", async () => {
+    const f = await fixture({ model: "chosen-model", instructions: "Use concise replies." });
     expect(f.client.startThread.mock.calls[0][0]).toMatchObject({ model: "chosen-model" });
     expect(f.client.startThread.mock.calls[0][0].developerInstructions).toContain("Use concise replies.");
     const list = vi.spyOn(f.hands, "listWindows");
-    await f.request(1, "item/tool/call", { tool: "lalime_list_windows", arguments: {} });
-    await f.request(2, "item/tool/call", { tool: "lalime_list_windows", arguments: {} });
-    expect(list).toHaveBeenCalledTimes(1);
-    expect(f.client.respondToolCall.mock.calls[1][1].success).toBe(false);
+    for (let i = 1; i <= 55; i++) await f.request(i, "item/tool/call", { tool: "lalime_list_windows", arguments: {} });
+    expect(list).toHaveBeenCalledTimes(55);
+    expect(f.client.respondToolCall.mock.calls.every((call) => call[1].success)).toBe(true);
   });
 
   it("rejects unsafe Settings URI in NodeHands before launching a process", async () => {

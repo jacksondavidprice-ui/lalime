@@ -52,6 +52,10 @@ export function registerIpc(session: SessionController, getWindow: () => Browser
   handle(IPC.writerCheckKey, () => session.writerCheckKey());
   handle(IPC.updateSettings, (settings) => session.updateSettings(settings));
   handle(IPC.connectProvider, (key) => session.connectProvider(key == null || key === "" ? undefined : text(key, 4096)));
+  handle(IPC.retryConnectionCheck, (...args) => {
+    if (args.length) throw new Error("Invalid input.");
+    return session.retryConnectionCheck();
+  });
   handle(IPC.disconnect, () => session.disconnect());
   handle(IPC.copyText, (value) => clipboard.writeText(text(value, 64000)));
   handle(IPC.openRecoveryFolder, (...args) => {

@@ -40,6 +40,7 @@ const pageErrors = [];
 const toolMessage = (id, name, args) => ({ role: "assistant", content: null,
   tool_calls: [{ id, type: "function", function: { name, arguments: JSON.stringify(args) } }] });
 const textMessage = (content) => ({ role: "assistant", content });
+const connectionChecks = [];
 const server = createServer(async (request, response) => {
   try {
     assert.equal(request.method, "POST");
@@ -52,6 +53,13 @@ const server = createServer(async (request, response) => {
       assert.ok(body.length < 1_000_000, "Fixture request is unexpectedly large");
     }
     const parsed = JSON.parse(body);
+    // Batch 13: Connect sends one tool-free "Reply with OK." check before the conversation starts.
+    if (!parsed.tools?.length && parsed.messages?.at(-1)?.content === "Reply with OK.") {
+      connectionChecks.push(parsed);
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ choices: [{ message: textMessage("OK"), finish_reason: "stop" }] }));
+      return;
+    }
     requests.push(parsed);
     assert.equal(parsed.model, "explicit-local-qa-fixture");
     let message;
@@ -76,6 +84,11 @@ const server = createServer(async (request, response) => {
         assert.ok(!parsed.tools.some((tool) => tool.function.name === "lalime_powershell"));
         // Deliberately request an unsupported tool. This literal must never execute.
         message = toolMessage("fixture-unsupported", "lalime_powershell", { command: "Write-Output 'unsupported-fixture-only'" });
+        break;
+      case 6:
+        // Batch 13: an unregistered tool call now returns a paired error result to the model instead of ending the turn.
+        assert.ok(parsed.messages.some((item) => item.role === "tool" && item.tool_call_id === "fixture-unsupported" && /Unknown tool/.test(item.content)));
+        message = textMessage("The fixture received the unknown-tool error. Nothing ran.");
         break;
       default:
         throw new Error("Unexpected fixture request after the unsupported tool");
@@ -149,8 +162,9 @@ try {
   console.log("PASS Guardian approval UI, stale approval rejection, and denial returned over HTTP");
 
   await page.evaluate(() => window.lalime.sendMessage("Check that the mock provider cannot invent a PowerShell tool."));
-  await waitForReply("The provider requested an unknown tool.");
-  assert.equal(requests.length, 5);
+  await waitForReply("The fixture received the unknown-tool error. Nothing ran.");
+  assert.equal(requests.length, 6);
+  assert.equal(connectionChecks.length, 1);
   const rejected = await page.evaluate(() => window.lalime.getSnapshot());
   assert.equal(rejected.pendingApproval, null);
   assert.equal(rejected.activity.length, 0);

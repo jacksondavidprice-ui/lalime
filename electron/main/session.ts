@@ -4,6 +4,7 @@
  */
 
 import { EventEmitter } from "node:events";
+import { isNarrationOnly, plainServiceFailure } from "./provider-output.js";
 import { app, shell } from "electron";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
@@ -40,6 +41,8 @@ import { boundedDisplayText, LiveAgentHost } from "./live-agent.js";
 import { validateSettings } from "../../shared/settings.js";
 import { loadSettings, saveSettings } from "./settings-store.js";
 import { ApiAgentClient } from "./api-agent-client.js";
+import { checkCodexConnection } from "./connection-check.js";
+import type { RepairPlan } from "../../shared/repair-plan.js";
 import { getProvider, validateProviderBaseUrl } from "../../shared/providers.js";
 import {
   clearWriterKey,
@@ -79,6 +82,8 @@ export class SessionController extends EventEmitter {
   private apiClient: ApiAgentClient | null = null;
   private generation = 0;
   private loginTimer: ReturnType<typeof setTimeout> | null = null;
+  private connectionAbort: AbortController | null = null;
+  private connectionPending: Promise<{ ok: boolean; message?: string }> | null = null;
   private writerAbort: AbortController | null = null;
   private live: LiveAgentHost | null = null;
   private streamingMessageId: string | null = null;
@@ -219,6 +224,9 @@ export class SessionController extends EventEmitter {
   }
 
   private disposeClient(): void {
+    this.connectionAbort?.abort();
+    this.connectionAbort = null;
+    this.connectionPending = null;
     this.writerAbort?.abort();
     this.writerAbort = null;
     this.generation++;
@@ -230,6 +238,8 @@ export class SessionController extends EventEmitter {
     this.codex = null;
     this.apiClient?.stop();
     this.apiClient = null;
+    this.state.connection = undefined;
+    this.state.repairPlan = undefined;
   }
 
   disconnect(): void {
@@ -249,13 +259,67 @@ export class SessionController extends EventEmitter {
       const generation = this.generation;
       await client.start();
       if (generation !== this.generation) return { ok: false, message: "Connection cancelled." };
-      this.live = new LiveAgentHost(client, this.hands, settings);
-      this.wireLive(this.live);
       const provider = getProvider(settings.providerId);
-      this.patch({ mode: "live", auth: { state: "signed_in", method: provider.id === "ollama" ? "local" : "api_key", providerId: provider.id }, messages: [], activity: [], plan: [], stopped: false, statusText: "Provider configured. Send a message to verify model access." });
-      return { ok: true, message: "Connected for this session. Model access is checked on your first message." };
+      this.patch({ mode: "live", auth: { state: "signed_in", method: provider.id === "ollama" ? "local" : "api_key", providerId: provider.id }, messages: [], activity: [], plan: [], stopped: false, statusText: "Checking model access" });
+      return await this.retryConnectionCheck();
     } catch (error) {
       return { ok: false, message: error instanceof Error ? error.message : "Could not connect provider." };
+    }
+  }
+
+  retryConnectionCheck(): Promise<{ ok: boolean; message?: string }> {
+    if (this.state.running) return Promise.resolve({ ok: false, message: "Stop the current task before checking the connection." });
+    if (this.state.auth.state !== "signed_in" || (!this.codex && !this.apiClient)) return Promise.resolve({ ok: false, message: "Sign in before checking the connection." });
+    if (this.connectionPending) {
+      this.connectionAbort?.abort();
+      this.connectionPending = null;
+    }
+    const pending = this.checkConnection();
+    this.connectionPending = pending;
+    void pending.finally(() => { if (this.connectionPending === pending) this.connectionPending = null; });
+    return pending;
+  }
+
+  private async checkConnection(): Promise<{ ok: boolean; message?: string }> {
+    const generation = this.generation;
+    const controller = new AbortController(); this.connectionAbort = controller;
+    const identity = {
+      model: this.state.settings?.model || "Provider default",
+      ...(this.state.connection?.account ? { account: this.state.connection.account } : {}),
+      ...(this.state.connection?.plan ? { plan: this.state.connection.plan } : {}),
+    };
+    this.patch({ connection: { state: "checking", ...identity }, statusText: "Checking model access" });
+    let temporary: CodexAppServerClient | undefined;
+    let cancel!: () => void;
+    const cancelled = new Promise<never>((_resolve, reject) => {
+      cancel = () => reject(new Error("Connection check cancelled."));
+      controller.signal.addEventListener("abort", cancel, { once: true });
+    });
+    try {
+      if (this.apiClient) {
+        await Promise.race([this.apiClient.checkConnection(controller.signal), cancelled]);
+      } else {
+        // A retry must not share tool events with an existing live conversation.
+        const client = this.live ? (temporary = this.newCodex()) : this.codex!;
+        if (temporary) await Promise.race([temporary.start(), cancelled]);
+        await Promise.race([checkCodexConnection(client, this.state.settings?.model || undefined, controller.signal), cancelled]);
+      }
+      if (controller.signal.aborted || generation !== this.generation) return { ok: false, message: "Connection check cancelled." };
+      if (!this.live) {
+        this.live = new LiveAgentHost(this.apiClient ?? this.codex!, this.hands, this.state.settings);
+        this.wireLive(this.live);
+      }
+      this.patch({ connection: { state: "ready", ...identity }, statusText: "Model connection ready" });
+      return { ok: true, message: "Model connection ready." };
+    } catch {
+      if (controller.signal.aborted || generation !== this.generation) return { ok: false, message: "Connection check cancelled." };
+      const reason = "The model did not answer the connection check. Check the selected model, account access, and network, then retry.";
+      this.patch({ connection: { state: "failed", ...identity, reason }, statusText: "Model connection check failed" });
+      return { ok: false, message: reason };
+    } finally {
+      controller.signal.removeEventListener("abort", cancel);
+      temporary?.stop();
+      if (this.connectionAbort === controller) this.connectionAbort = null;
     }
   }
 
@@ -341,14 +405,16 @@ export class SessionController extends EventEmitter {
         if (generation !== this.generation || result.account?.type !== "chatgpt") return;
         if (this.loginTimer) clearTimeout(this.loginTimer);
         this.loginTimer = null;
-        this.live = new LiveAgentHost(client, this.hands, this.state.settings);
-        this.wireLive(this.live);
-        this.patch({ auth: { state: "signed_in", method: "chatgpt", providerId: "chatgpt", email: result.account.email ?? undefined }, statusText: "Signed in with ChatGPT" });
+        this.patch({ auth: { state: "signed_in", method: "chatgpt", providerId: "chatgpt", email: result.account.email ?? undefined },
+          connection: { state: "checking", model: this.state.settings?.model || "Provider default",
+            ...(result.account.email ? { account: result.account.email } : {}),
+            ...(result.account.planType ? { plan: result.account.planType } : {}) }, statusText: "Checking model access" });
+        await this.retryConnectionCheck();
       };
       const existing = await client.readAccount();
       if (existing.account?.type === "chatgpt") {
         await activate();
-        return { ok: true };
+        return { ok: this.state.connection?.state === "ready" };
       }
       const { authUrl, loginId } = await client.loginWithChatgpt();
       if (generation !== this.generation) return { ok: false, message: "Sign-in cancelled." };
@@ -392,10 +458,8 @@ export class SessionController extends EventEmitter {
       if (generation !== this.generation) return { ok: false, message: "Sign-in cancelled." };
       await client.loginWithApiKey(apiKey.trim());
       if (generation !== this.generation) return { ok: false, message: "Sign-in cancelled." };
-      this.live = new LiveAgentHost(client, this.hands, this.state.settings);
-      this.wireLive(this.live);
       this.patch({ mode: "live", auth: { state: "signed_in", method: "api_key", providerId: "openai" }, stopped: false, statusText: "Signed in with your API key" });
-      return { ok: true };
+      return await this.retryConnectionCheck();
     } catch {
       if (generation !== this.generation) return { ok: false, message: "Sign-in cancelled." };
       this.disposeClient();
@@ -436,10 +500,11 @@ export class SessionController extends EventEmitter {
     });
     live.on("messageDone", (text: string) => {
       if (!active()) return;
+      // Mid-turn narration: live-agent follows with its own status, so keep it.
       this.agentConclusion = text;
-      this.patch({ statusText: "Preparing a clear reply…" });
     });
-    live.on("plan", (steps: PlanStep[]) => this.patch({ plan: steps }));
+    live.on("plan", (steps: PlanStep[]) => { if (active()) this.patch({ plan: steps }); });
+    live.on("repairPlan", (repairPlan: RepairPlan) => { if (active()) this.patch({ repairPlan }); });
     live.on("approvalNeeded", (pending: PendingApproval) => {
       if (!active()) return;
       this.patch({ pendingApproval: pending, statusText: "Waiting for your OK" });
@@ -451,19 +516,9 @@ export class SessionController extends EventEmitter {
         plainEnglish: decision.plainEnglish,
         tier: decision.tier,
       });
-      this.patch({
-        blockedNotice: decision,
-        statusText: "Blocked by Guardian",
-        messages: [
-          ...this.state.messages,
-          {
-            id: id("m"),
-            role: "assistant",
-            content: decision.plainEnglish,
-            createdAt: Date.now(),
-          },
-        ],
-      });
+      // The blocked card shows the reason; the model's reply explains next steps.
+      // Posting plainEnglish here too would say it twice.
+      this.patch({ blockedNotice: decision, statusText: "Blocked by Guardian" });
     });
     live.on("activity", (entry) => {
       // Keep recovery for a change that finished after Stop. Do not credit it to a later task.
@@ -490,7 +545,7 @@ export class SessionController extends EventEmitter {
         statusText: "Something went wrong",
         messages: [
           ...this.state.messages,
-          { id: id("m"), role: "assistant", content: message, createdAt: Date.now() },
+          { id: id("m"), role: "assistant", content: this.turnActivity.length ? `${message} ${this.activityOutcomeFallback()}` : message, createdAt: Date.now() },
         ],
       });
     });
@@ -532,7 +587,9 @@ export class SessionController extends EventEmitter {
     if (this.state.stopped || !this.state.running) return;
     const generation = this.generation;
     const writerSignal = this.writerAbort?.signal;
-    const fallback = this.agentConclusion.trim() || "The provider returned no answer. Please try again.";
+    const conclusion = this.agentConclusion.trim();
+    const fallback = (conclusion && !isNarrationOnly(conclusion) ? conclusion : "") || this.turnBlocked.at(-1)?.plainEnglish
+      || this.activityOutcomeFallback();
     const outcome = this.inferOutcome();
     const facts = buildFactsPacket({
       userRequest: this.turnUserRequest,
@@ -626,6 +683,12 @@ export class SessionController extends EventEmitter {
     }
   }
 
+  private activityOutcomeFallback(): string {
+    return this.turnActivity.length
+      ? `Lalime recorded ${this.turnActivity.length} action${this.turnActivity.length === 1 ? "" : "s"}. See What changed for details. I could not confirm that the problem is fixed.`
+      : "I could not confirm that the problem is fixed. No changes were recorded. Please try again.";
+  }
+
   private publishAssistant(text: string): void {
     this.patch({
       messages: [
@@ -649,6 +712,10 @@ export class SessionController extends EventEmitter {
   }
 
   stop(): void {
+    this.connectionAbort?.abort();
+    if (this.state.connection?.state === "checking") {
+      this.state.connection = { ...this.state.connection, state: "failed", reason: "Connection check stopped. Reconnect to try again." };
+    }
     this.abort = true;
     this.writerAbort?.abort();
     this.hands.stop();
@@ -762,6 +829,10 @@ export class SessionController extends EventEmitter {
   async sendMessage(text: string): Promise<void> {
     const trimmed = text.trim();
     if (!trimmed || this.state.running) return;
+    if (this.state.connection?.state === "checking") {
+      this.patch({ statusText: "Checking model access. Wait for the result or stop the check." });
+      return;
+    }
 
     if (this.state.mode === "live" && this.live && this.state.auth.state === "signed_in") {
       await this.runLive(trimmed);
@@ -840,6 +911,7 @@ export class SessionController extends EventEmitter {
       pendingApproval: null,
       statusText: "Thinking…",
       plan: [],
+      repairPlan: undefined,
     });
     try {
       await this.live!.runTurn(userText);
@@ -852,10 +924,7 @@ export class SessionController extends EventEmitter {
           {
             id: id("m"),
             role: "assistant",
-            content:
-              err instanceof Error
-                ? `I hit a problem talking to Codex: ${err.message}. Open Settings to sign in again, or paste your own API key.`
-                : "Codex error",
+            content: plainServiceFailure,
             createdAt: Date.now(),
           },
         ],

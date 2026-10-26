@@ -63,6 +63,27 @@ describe("session authentication and cancellation", () => {
     client.emit("serverRequest", { id: 102, method: "item/commandExecution/requestApproval", params: { command: "Remove-Item C:\\Windows\\System32 -Recurse -Force" } });
     await vi.waitFor(() => expect(session.getSnapshot().blockedNotice).not.toBeNull());
     expect(session.getSnapshot().pendingApproval?.action.id).toBe(actionId);
+    // The blocked card carries the reason; it is not also posted as a chat message.
+    expect(session.getSnapshot().messages.filter((m) => m.role === "assistant")).toEqual([]);
+    session.dispose();
+  });
+  it("keeps live narration status and ends a blocked turn with the block reason", async () => {
+    const session = new SessionController(new MockHands());
+    await session.signInChatgpt();
+    const client = state.clients[0];
+    session.attachLiveClient(client);
+    await session.sendMessage("Help with settings");
+    client.emit("item/completed", { item: { type: "agentMessage", text: "Checking what is safe to remove first." } });
+    await vi.waitFor(() => expect(session.getSnapshot().statusText).toBe("Checking what is safe to remove first."));
+    client.emit("serverRequest", { id: 105, method: "item/tool/call", params: { tool: "lalime_click", arguments: { name: "Apply", windowTitle: "Settings" } } });
+    await vi.waitFor(() => expect(session.getSnapshot().pendingApproval).not.toBeNull());
+    client.emit("serverRequest", { id: 104, method: "item/commandExecution/requestApproval", params: { command: "Remove-Item C:\\Windows\\System32 -Recurse -Force" } });
+    await vi.waitFor(() => expect(session.getSnapshot().blockedNotice).not.toBeNull());
+    const reason = session.getSnapshot().blockedNotice!.plainEnglish;
+    (session as unknown as { agentConclusion: string }).agentConclusion = "";
+    client.emit("turn/completed", { turn: { id: "turn-1", status: "completed" } });
+    await vi.waitFor(() => expect(session.getSnapshot().running).toBe(false));
+    expect(session.getSnapshot().messages.filter((m) => m.role === "assistant").map((m) => m.content)).toEqual([reason]);
     session.dispose();
   });
   it("cannot restore an API login after disconnect", async () => {

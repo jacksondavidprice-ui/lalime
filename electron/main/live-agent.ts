@@ -191,6 +191,10 @@ export class LiveAgentHost extends EventEmitter {
   private generation = 0;
   private toolCalls = 0;
   private requestGenerations = new Map<string | number, number>();
+  private approvalOrder = new Map<string | number, number>();
+  private preparingApprovals = new Set<string | number>();
+  private approvalSequence = 0;
+  private highestQueuedApprovalOrder = -1;
   private retiredTurnIds = new Set<string>();
   private startup: { events: Array<{ deliver: () => void; reject?: () => void }>; bytes: number } | null = null;
   private undoNotices = new Map<string, string>();
@@ -378,6 +382,9 @@ export class LiveAgentHost extends EventEmitter {
       waiter.resolve({ choice: "not_now", withdrawn: true });
     }
     this.approvalWaiters.clear();
+    this.approvalOrder.clear();
+    this.preparingApprovals.clear();
+    this.highestQueuedApprovalOrder = -1;
     this.displayedApprovalId = null;
     this.emitApprovalQueue();
     for (const action of this.acceptedCommands.values()) this.emitUncertainCommand(action);
@@ -455,8 +462,11 @@ export class LiveAgentHost extends EventEmitter {
   }
 
   private emitCurrentApproval(): void {
-    const next = this.approvalWaiters.values().next().value;
+    const first = this.approvalWaiters.entries().next().value;
+    const next = first?.[1];
     if (this.stopped || !next || this.displayedApprovalId === next.pending.action.id) return;
+    const nextOrder = this.approvalOrder.get(first![0]) ?? Infinity;
+    for (const id of this.preparingApprovals) if ((this.approvalOrder.get(id) ?? Infinity) < nextOrder) return;
     this.displayedApprovalId = next.pending.action.id;
     this.emit("approvalNeeded", next.pending);
   }
@@ -519,6 +529,7 @@ export class LiveAgentHost extends EventEmitter {
     this.undoNotices.set(actionId, JSON.stringify({ kind: "user_undo", actionId,
       outcome: result.ok ? "restored" : partial ? "partly_restored" : "failed",
       ...(progress ? { restored: progress.restored, total: progress.total } : {}),
+      ...(result.restoreWarning ? { warning: result.restoreWarning } : {}),
       summary: boundedDisplayText(summary).text,
       result: detail.fullLength <= 4096 ? detail.text
         : "The restore details exceed the model message limit. Full file and recovery paths are in the change details." }));
@@ -606,6 +617,12 @@ export class LiveAgentHost extends EventEmitter {
   }): Promise<void> {
     if (this.requestGenerations.has(req.id)) return;
     this.requestGenerations.set(req.id, this.generation);
+    const tool = (req.params as { tool?: string } | undefined)?.tool;
+    if (req.method === "item/commandExecution/requestApproval" || req.method === "item/fileChange/requestApproval"
+      || (req.method === "item/tool/call" && ["lalime_click", "lalime_type", "lalime_open_settings", "lalime_recycle"].includes(tool ?? ""))) {
+      this.approvalOrder.set(req.id, this.approvalSequence++);
+      this.preparingApprovals.add(req.id);
+    }
     if (this.deferStartup(req.params, () => { void this.dispatchServerRequest(req); }, () => {
       this.requestGenerations.set(req.id, -1);
       void this.dispatchServerRequest(req);
@@ -651,6 +668,9 @@ export class LiveAgentHost extends EventEmitter {
       this.emitStatus(err instanceof Error ? err.message : "Request failed");
     } finally {
       this.requestGenerations.delete(req.id);
+      this.preparingApprovals.delete(req.id);
+      this.approvalOrder.delete(req.id);
+      this.emitCurrentApproval();
     }
   }
 
@@ -665,10 +685,15 @@ export class LiveAgentHost extends EventEmitter {
       const reason = this.grantUnavailableReason(pending.action, pending.decision);
       pending.canAllowForTask = reason === undefined;
       if (reason) pending.grantUnavailableReason = reason;
-      const first = this.approvalWaiters.size === 0;
+      this.preparingApprovals.delete(reqId);
+      const order = this.approvalOrder.get(reqId) ?? 0;
       this.approvalWaiters.set(reqId, { resolve, kind, pending });
+      if (order < this.highestQueuedApprovalOrder) {
+        this.approvalWaiters = new Map([...this.approvalWaiters].sort(([a], [b]) => (this.approvalOrder.get(a) ?? 0) - (this.approvalOrder.get(b) ?? 0)));
+      }
+      this.highestQueuedApprovalOrder = Math.max(this.highestQueuedApprovalOrder, order);
       this.emitApprovalQueue();
-      if (first) this.emitCurrentApproval();
+      this.emitCurrentApproval();
     });
   }
 

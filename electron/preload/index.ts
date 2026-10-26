@@ -26,6 +26,7 @@ const api: LalimeApi = {
   connectProvider: (apiKey) => ipcRenderer.invoke(IPC.connectProvider, apiKey),
   disconnect: () => ipcRenderer.invoke(IPC.disconnect),
   copyText: (text) => ipcRenderer.invoke(IPC.copyText, text),
+  openRecoveryFolder: () => ipcRenderer.invoke(IPC.openRecoveryFolder),
   undo: (activityId: string) => ipcRenderer.invoke(IPC.undo, activityId),
   stop: () => ipcRenderer.invoke(IPC.stop),
   dismissBlocked: () => ipcRenderer.invoke(IPC.dismissBlocked),

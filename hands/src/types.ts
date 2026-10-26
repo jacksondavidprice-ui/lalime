@@ -1,4 +1,5 @@
 /** Cross-platform Hands contract (mock, Node, or Windows Hands.exe). */
+import type { UndoItemIssue } from "../../shared/types.js";
 
 export interface HandsResult {
   ok: boolean;
@@ -9,6 +10,11 @@ export interface HandsResult {
   completedItems?: number;
   /** Cumulative restored journal items; a directory counts as one complete item. */
   restoreProgress?: { restored: number; total: number };
+  /** recoveryPath is included only when the remaining copy exists at the time of reporting. */
+  undoItems?: UndoItemIssue[];
+  /** Files are restored, but recovery metadata still needs an update. */
+  restoreWarning?: string;
+  undoState?: "already_restored" | "in_progress";
   /** Optional screenshot as data URL for dynamic tool image results. */
   imageDataUrl?: string;
 }

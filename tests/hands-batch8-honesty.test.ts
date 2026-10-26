@@ -61,7 +61,8 @@ it("reports manifest update failure honestly, retains the previous mapping, and 
   const before = await readFile(manifest, "utf8");
   hooks.writeFile.mockRejectedValueOnce(new Error("Fixture metadata write denied"));
   const result = await hands.undo(moved.undoToken!);
-  expect(result.ok).toBe(false);
+  expect(result.ok).toBe(true);
+  expect(result.restoreWarning).toMatch(/recovery list/i);
   expect(result.output).toContain(`Recovery list: ${manifest}`);
   expect(result.output).toContain("Fixture metadata write denied");
   expect(await readFile(manifest, "utf8")).toBe(before);

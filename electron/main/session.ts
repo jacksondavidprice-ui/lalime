@@ -26,6 +26,7 @@ import type {
   PendingApproval,
   PlanStep,
   ProposedAction,
+  UndoItemIssue,
 } from "../../shared/types.js";
 import {
   AnthropicClient,
@@ -54,6 +55,20 @@ function id(prefix: string): string {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+function undoIssueHint(items: UndoItemIssue[]): string {
+  const first = items[0];
+  const name = boundedDisplayText(first.name);
+  const reason = boundedDisplayText(first.reason);
+  const kept = first.recoveryPath ? " Kept in Lalime's recovery folder." : "";
+  const more = items.length > 1 ? `; and ${items.length - 1} more.` : "";
+  const label = name.fullLength <= 60 ? name.text : "An item";
+  const hint = `${label}: ${reason.text}${kept}${more}`;
+  if (hint.length <= 240 && reason.fullLength <= 4096) return hint;
+  const short = `An item: ${reason.text}${kept}${more}`;
+  if (short.length <= 240 && reason.fullLength <= 4096) return short;
+  return `An item was not put back. Its specific reason is in the change details.${kept}${more}`;
 }
 
 export class SessionController extends EventEmitter {
@@ -536,7 +551,9 @@ export class SessionController extends EventEmitter {
           undoable: a.undoable && !a.undone };
       }),
       errors: this.turnActivity.flatMap((a) => {
+        if (a.undoResult?.warning) return [{ code: "UNDO_WARNING", plainHint: a.undoResult.warning }];
         if (a.undoResult?.status !== "failed") return [];
+        if (a.undoResult.items?.length) return [{ code: "UNDO_FAILED", plainHint: undoIssueHint(a.undoResult.items) }];
         const reason = boundedDisplayText(a.undoResult.reason);
         return [{ code: "UNDO_FAILED", plainHint: reason.fullLength <= 240 ? reason.text
           : "Undo could not be fully verified. See the change details for the complete file and recovery locations." }];
@@ -707,18 +724,24 @@ export class SessionController extends EventEmitter {
       this.pendingUndos.delete(activityId);
     }
     if (!this.state.activity.some((a) => a.id === activityId)) { finishUndo?.(); return; }
+    if (result.undoState || (!result.ok && ["Already undone.", "Undo is already in progress."].includes(result.output))) {
+      finishUndo?.();
+      return;
+    }
     try {
       if (live && this.live === live) live.recordUndoResult(entry.actionId, entry.summary, result);
     } finally { finishUndo?.(); }
     if (!result.ok) {
       this.patch({ activity: this.state.activity.map((a) => a.id === activityId
-        ? { ...a, undoResult: { status: "failed", reason: result.output || "The restore could not be verified.", ...result.restoreProgress } } : a), statusText: result.restoreProgress && result.restoreProgress.restored > 0 && result.restoreProgress.restored < result.restoreProgress.total ? "Partly restored" : "Undo failed" });
+        ? { ...a, undoResult: { status: "failed", reason: result.output || "The restore could not be verified.", ...result.restoreProgress,
+          ...(result.undoItems ? { items: result.undoItems } : {}) } } : a), statusText: result.restoreProgress && result.restoreProgress.restored > 0 && result.restoreProgress.restored < result.restoreProgress.total ? "Partly restored" : "Undo failed" });
       const updated = this.state.activity.find((a) => a.id === activityId)!;
       this.turnActivity = [updated, ...this.turnActivity.filter((a) => a.id !== activityId)];
       return;
     }
     const activity: ActivityEntry[] = this.state.activity.map((a) =>
-      a.id === activityId ? { ...a, undone: true, undoResult: { status: "restored", ...result.restoreProgress }, summary: `Undone: ${a.summary}` } : a,
+      a.id === activityId ? { ...a, undone: true, undoResult: { status: "restored", ...result.restoreProgress,
+        ...(result.restoreWarning ? { warning: result.restoreWarning } : {}) }, summary: `Undone: ${a.summary}` } : a,
     );
     this.turnActivity = [activity.find((a) => a.id === activityId)!, ...this.turnActivity.filter((a) => a.id !== activityId)];
     this.patch({
@@ -728,11 +751,11 @@ export class SessionController extends EventEmitter {
         {
           id: id("m"),
           role: "assistant",
-          content: "The selected change was restored.",
+          content: `The selected change was restored.${result.restoreWarning ? ` ${result.restoreWarning}` : ""}`,
           createdAt: Date.now(),
         },
       ],
-      statusText: "Undone",
+      statusText: result.restoreWarning ? "Restored with a warning" : "Undone",
     });
   }
 

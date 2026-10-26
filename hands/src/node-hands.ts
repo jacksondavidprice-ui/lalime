@@ -17,8 +17,18 @@ interface JournalEntry {
   id: string;
   summary: string;
   undone: boolean;
-  restore?: () => Promise<void>;
+  restore?: () => Promise<Pick<HandsResult, "ok" | "output" | "undoItems" | "restoreWarning">>;
   restoreProgress?: () => { restored: number; total: number };
+  pendingDirectories?: () => string[];
+}
+
+function restoreIssueReason(error: unknown): string {
+  if ((error as NodeJS.ErrnoException | null)?.code) return restoreErrorMessage(error);
+  const message = error instanceof Error ? error.message : "";
+  if (["The original restore location changed. Recovery remains in quarantine.",
+    "The restore destination changed. Recovery remains in quarantine.",
+    "This file type cannot be restored automatically."].includes(message)) return message;
+  return "This item could not be restored. Check the detailed result and recovery location.";
 }
 
 function restoreErrorMessage(error: unknown): string {
@@ -101,6 +111,12 @@ async function restoreExclusive(
   validateDestination: (destination: string) => Promise<void>,
 ): Promise<void> {
   const sourceStat = await lstat(source);
+  const sourceParent = path.dirname(source);
+  const parentStat = await lstat(sourceParent);
+  if ((parentStat.mode & 0o222) === 0 || (process.platform !== "win32" && (parentStat.mode & 0o111) === 0)) {
+    throw Object.assign(new Error("Permission was denied for recovery cleanup."), { code: "EACCES" });
+  }
+  await access(sourceParent, constants.W_OK | constants.X_OK);
   await validateDestination(destination);
   const previous = created.get(destination);
   if (previous) {
@@ -263,7 +279,7 @@ export class NodeHands implements HandsClient {
     } catch (err) {
       return { ok: false, output: `No items were moved. Cannot save recovery manifest: ${err instanceof Error ? err.message : "Write failed."}` };
     }
-    const moved: Array<{ from: string; to: string; expectedDestination: string; restored: boolean }> = [];
+    const moved: Array<{ from: string; to: string; expectedDestination: string; restored: boolean; isDirectory: boolean }> = [];
     const failures: string[] = [];
 
     for (const [index, item] of selected.entries()) {
@@ -276,6 +292,7 @@ export class NodeHands implements HandsClient {
         const canonical = await validateRecyclePath(p, roots);
         if (path.relative(item.canonical, canonical) !== "") throw new Error("The selected target changed after validation. This item was not moved.");
         await checkRecycleAccess(p, canonical);
+        const isDirectory = (await lstat(p)).isDirectory();
         const expectedDestination = path.join(await realpath(path.dirname(p)), path.basename(p));
         // Access checks await filesystem work. Recheck scope before starting the move.
         const current = await validateRecyclePath(p, roots);
@@ -289,7 +306,7 @@ export class NodeHands implements HandsClient {
         const dest = path.join(quarantine, String(index));
         // Cross-device moves fail safely. A copy alone is not a recycle operation.
         await rename(p, dest);
-        moved.push({ from: p, to: dest, expectedDestination, restored: false });
+        moved.push({ from: p, to: dest, expectedDestination, restored: false, isDirectory });
       } catch (err) {
         const reason = (err as NodeJS.ErrnoException | null)?.code === "ENOENT"
           ? "This file or folder no longer exists. Nothing was moved for this item."
@@ -308,8 +325,10 @@ export class NodeHands implements HandsClient {
       summary,
       undone: false,
       restoreProgress: () => ({ restored: moved.filter((m) => m.restored).length, total: moved.length }),
+      pendingDirectories: () => moved.filter((m) => m.isDirectory && !m.restored).map((m) => m.expectedDestination),
       restore: async () => {
         const errors: string[] = [];
+        const undoItems: NonNullable<HandsResult["undoItems"]> = [];
         for (const m of moved) {
           if (m.restored) continue;
           try {
@@ -323,10 +342,28 @@ export class NodeHands implements HandsClient {
             });
             m.restored = true;
           } catch (err) {
-            const recoveryLabel = (err as NodeJS.ErrnoException | null)?.code === "EEXIST" ? "Original copy kept at" : "Recovery location";
-            errors.push(`${m.from}: ${restoreErrorMessage(err)} ${recoveryLabel}: ${m.to}`);
+            let reason = restoreIssueReason(err);
+            let folderHint: string | undefined;
+            if ((err as NodeJS.ErrnoException | null)?.code === "ENOENT") {
+              try { await lstat(path.dirname(m.from)); }
+              catch (parentError) {
+                if ((parentError as NodeJS.ErrnoException | null)?.code === "ENOENT") {
+                  const later = this.journal.slice(this.journal.findIndex((entry) => entry.id === jid) + 1);
+                  const folder = later.flatMap((entry) => entry.pendingDirectories?.() ?? []).find((candidate) => strictChild(candidate, m.expectedDestination));
+                  if (folder) folderHint = `Undo the change that moved '${path.basename(folder)}' first, then try this one again.`;
+                }
+              }
+            }
+            if (folderHint) reason = folderHint;
+            let recoveryPath: string | undefined;
+            try { await lstat(m.to); recoveryPath = m.to; }
+            catch { /* Do not claim that a missing or inaccessible copy is available. */ }
+            undoItems.push({ name: path.basename(m.from), reason, ...(recoveryPath ? { recoveryPath } : {}) });
+            const recoveryLabel = recoveryPath && (err as NodeJS.ErrnoException | null)?.code === "EEXIST" ? "Original copy kept at" : "Recovery location";
+            errors.push(`${m.from}: ${folderHint ?? restoreErrorMessage(err)} ${recoveryLabel}: ${m.to}`);
           }
         }
+        let restoreWarning: string | undefined;
         try {
           const remaining = moved.filter((m) => !m.restored).map((m) => ({
             quarantineName: path.basename(m.to), originalPath: path.resolve(m.from),
@@ -337,8 +374,17 @@ export class NodeHands implements HandsClient {
           await rename(updatePath, manifestPath);
         } catch (err) {
           errors.push(`Recovery list update failed: ${restoreErrorMessage(err)}`);
+          if (undoItems.length === 0) {
+            const explanation = (err as NodeJS.ErrnoException | null)?.code ? restoreErrorMessage(err) : "Check the detailed result before retrying the recovery list update.";
+            restoreWarning = `Recovery list update failed. The files were restored. ${explanation}`;
+          }
         }
-        if (errors.length) throw new Error(`Restored ${moved.filter((m) => m.restored).length} of ${moved.length} item(s). ${errors.join("; ")} Recovery list: ${manifestPath}`);
+        return {
+          ok: undoItems.length === 0,
+          output: errors.length ? `Restored ${moved.filter((m) => m.restored).length} of ${moved.length} item(s). ${errors.join("; ")} Recovery list: ${manifestPath}` : `Undid: ${summary}`,
+          undoItems,
+          restoreWarning,
+        };
       },
     });
     return {
@@ -411,14 +457,14 @@ export class NodeHands implements HandsClient {
   async undo(journalId: string): Promise<HandsResult> {
     const entry = this.journal.find((j) => j.id === journalId);
     if (!entry) return { ok: false, output: "Nothing to undo." };
-    if (entry.undone) return { ok: false, output: "Already undone.", restoreProgress: entry.restoreProgress?.() };
+    if (entry.undone) return { ok: false, output: "Already undone.", undoState: "already_restored", restoreProgress: entry.restoreProgress?.() };
     if (!entry.restore) return { ok: false, output: "This change has no automatic restore operation." };
-    if (this.pendingUndos.has(journalId)) return { ok: false, output: "Undo is already in progress.", restoreProgress: entry.restoreProgress?.() };
+    if (this.pendingUndos.has(journalId)) return { ok: false, output: "Undo is already in progress.", undoState: "in_progress", restoreProgress: entry.restoreProgress?.() };
     this.pendingUndos.add(journalId);
     try {
-      await entry.restore();
-      entry.undone = true;
-      return { ok: true, output: `Undid: ${entry.summary}`, restoreProgress: entry.restoreProgress?.() };
+      const result = await entry.restore();
+      entry.undone = result.ok && !result.restoreWarning;
+      return { ...result, journalId, restoreProgress: entry.restoreProgress?.() };
     } catch (err) {
       return { ok: false, output: err instanceof Error ? err.message : "Restore failed. Recovery remains in quarantine.", journalId, restoreProgress: entry.restoreProgress?.() };
     } finally {

@@ -37,6 +37,7 @@ export const IPC = {
   connectProvider: "lalime:connectProvider",
   disconnect: "lalime:disconnect",
   copyText: "lalime:copyText",
+  openRecoveryFolder: "lalime:openRecoveryFolder",
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];
@@ -64,6 +65,7 @@ export interface LalimeApi {
   connectProvider: (apiKey?: string) => Promise<{ ok: boolean; message?: string }>;
   disconnect: () => Promise<void>;
   copyText: (text: string) => Promise<void>;
+  openRecoveryFolder?: () => Promise<{ ok: boolean; message?: string }>;
   undo: (activityId: string) => Promise<void>;
   stop: () => Promise<void>;
   dismissBlocked: () => Promise<void>;

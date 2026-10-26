@@ -2,6 +2,7 @@ import { clipboard, ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from 
 import { IPC, type DemoScenarioId } from "../../shared/ipc.js";
 import type { ApprovalChoice } from "../../shared/types.js";
 import type { SessionController } from "./session.js";
+import { openRecoveryFolder } from "./recovery-folder.js";
 
 function text(value: unknown, max = 32000): string {
   if (typeof value !== "string" || !value.trim() || value.length > max) throw new Error("Invalid input.");
@@ -53,4 +54,8 @@ export function registerIpc(session: SessionController, getWindow: () => Browser
   handle(IPC.connectProvider, (key) => session.connectProvider(key == null || key === "" ? undefined : text(key, 4096)));
   handle(IPC.disconnect, () => session.disconnect());
   handle(IPC.copyText, (value) => clipboard.writeText(text(value, 64000)));
+  handle(IPC.openRecoveryFolder, (...args) => {
+    if (args.length !== 0) throw new Error("Invalid input.");
+    return openRecoveryFolder();
+  });
 }

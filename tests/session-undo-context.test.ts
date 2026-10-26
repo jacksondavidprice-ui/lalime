@@ -335,3 +335,44 @@ it("reports a real NodeHands partial restore consistently to the snapshot, model
   expect(compose.mock.calls[0][0]).toMatchObject({ outcome: "partly_done", actions: [expect.objectContaining({ summary: "Partly restored (2 of 3): Moved three files" }), expect.anything()] });
   expect(JSON.stringify(compose.mock.calls[0][0].errors)).not.toContain("EEXIST");
 });
+
+it("builds a useful writer hint from structured item issues instead of long recovery paths", async () => {
+  const f = await fixture();
+  const items = ["f1.tmp", "f2.tmp"].map((name) => ({ name, reason: "A newer file with that name is there, so it was left alone.", recoveryPath: "C:\\recovery\\" + "folder\\".repeat(50) + name }));
+  f.undo.mockResolvedValue({ ok: false, output: "Full recovery details " + items[0].recoveryPath, restoreProgress: { restored: 1, total: 3 }, undoItems: items } as never);
+  await f.session.undo(f.entryId);
+  expect(f.session.getSnapshot().activity[0].undoResult).toMatchObject({ items });
+  vi.spyOn(writerKeys, "loadWriterKey").mockReturnValue("fixture-placeholder");
+  const compose = vi.spyOn(WriterService.prototype, "composeReply").mockResolvedValue({ text: "Fixture reply", used: true });
+  f.client.emit("turn/completed", { threadId: "thread", turn: { id: "turn", status: "completed" } }); await flush();
+  const hint = compose.mock.calls[0][0].errors![0].plainHint;
+  expect(hint).toContain("f1.tmp"); expect(hint).toContain("newer file");
+  expect(hint).toContain("Lalime's recovery folder"); expect(hint).toContain("and 1 more");
+  expect(hint).not.toContain("C:"); expect(hint).not.toContain("could not be fully verified");
+  expect(hint.length).toBeLessThanOrEqual(240);
+});
+
+it("reports all restored files with a metadata warning to the snapshot, model, and writer", async () => {
+  const f = await fixture(); const warning = "Your files were restored, but Lalime could not update its recovery list.";
+  f.undo.mockResolvedValue({ ok: true, output: "Restored all files.", restoreProgress: { restored: 2, total: 2 }, restoreWarning: warning } as never);
+  await f.session.undo(f.entryId);
+  expect(f.session.getSnapshot().activity[0]).toMatchObject({ undone: true, undoResult: { status: "restored", warning, restored: 2, total: 2 } });
+  expect(f.session.getSnapshot().messages.at(-1)!.content).toContain(warning);
+  f.client.emit("serverRequest", { id: 80, method: "item/tool/call", params: { tool: "lalime_click", arguments: { name: "Save", windowTitle: "Editor" } } }); await flush();
+  const model = f.client.respondToolCall.mock.calls[0][1].contentItems.at(-1).text as string;
+  expect(model).toContain('"outcome":"restored"'); expect(model).toContain(warning);
+  vi.spyOn(writerKeys, "loadWriterKey").mockReturnValue("fixture-placeholder");
+  const compose = vi.spyOn(WriterService.prototype, "composeReply").mockResolvedValue({ text: "Fixture reply", used: true });
+  f.client.emit("turn/completed", { threadId: "thread", turn: { id: "turn", status: "completed" } }); await flush();
+  expect(compose.mock.calls[0][0].errors).toContainEqual({ code: "UNDO_WARNING", plainHint: warning });
+  expect(compose.mock.calls[0][0].actions[0]).toMatchObject({ status: "skipped", undoable: false });
+});
+
+it.each(["already_restored", "in_progress"])("does not stamp failure for a backend %s no-op", async (undoState) => {
+  const f = await fixture();
+  const before = structuredClone(f.session.getSnapshot().activity[0]);
+  f.undo.mockResolvedValue({ ok: false, output: undoState === "already_restored" ? "Already undone." : "Undo is already in progress.", undoState, restoreProgress: { restored: 1, total: 1 } } as never);
+  await f.session.undo(f.entryId);
+  expect(f.session.getSnapshot().activity[0]).toEqual(before);
+  expect(f.session.getSnapshot().statusText).not.toBe("Undo failed");
+});

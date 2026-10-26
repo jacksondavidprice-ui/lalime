@@ -76,7 +76,8 @@ it("reports all restored files even when saving the recovery list fails", async 
   const moved = await hands.moveToRecycleBin(files, "Three files");
   hooks.writeFile.mockRejectedValueOnce(Object.assign(new Error("EACCES: opaque metadata syscall"), { code: "EACCES" }));
   const result = await hands.undo(moved.undoToken!);
-  expect(result.ok).toBe(false);
+  expect(result.ok).toBe(true);
+  expect(result.restoreWarning).toMatch(/recovery list.*permission/i);
   expect(result.output).toMatch(/permission/i);
   expect(result.restoreProgress).toEqual({ restored: 3, total: 3 });
   expect(result.output).not.toContain("EACCES");

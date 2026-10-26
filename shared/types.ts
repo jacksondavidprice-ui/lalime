@@ -80,6 +80,13 @@ export interface ChatMessage {
   createdAt: number;
 }
 
+export interface UndoItemIssue {
+  name: string;
+  reason: string;
+  /** Details-only path. Never use this as a renderer-selected open target. */
+  recoveryPath?: string;
+}
+
 export interface ActivityEntry {
   id: string;
   at: number;
@@ -89,7 +96,9 @@ export interface ActivityEntry {
   undone?: boolean;
   actionId?: string;
   /** Optional counts describe complete journal items restored, including earlier retry attempts. */
-  undoResult?: ({ status: "restored" } | { status: "failed"; reason: string }) & { restored?: number; total?: number };
+  undoResult?: ({ status: "restored" } | { status: "failed"; reason: string }) & {
+    restored?: number; total?: number; items?: UndoItemIssue[]; warning?: string;
+  };
   /** Display-only record of consent withdrawn when Undo started. Text is escaped and capped at 4096 characters. */
   approvalWithdrawal?: {
     actionId: string;

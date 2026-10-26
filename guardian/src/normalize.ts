@@ -70,10 +70,55 @@ export function canonicalEquivalents(text: string): string {
   return out.join(" ");
 }
 
+const WINDOWS_DIR = "c:\\windows";
+const SYSTEM32_DIR = "c:\\windows\\system32";
+const SYSWOW64_DIR = "c:\\windows\\syswow64";
+
+/**
+ * Path-spelling canonicalization (host-side, no policy change).
+ *
+ * PowerShell and cmd can name the Windows folder through environment
+ * variables or .NET calls instead of the literal "C:\Windows". This rewrites
+ * those spellings to the literal path (and "/" or doubled "\\" separators to a
+ * single "\") so the EXISTING never-list path rules see the same folder. It
+ * only changes spelling; it removes no command text and makes no decision.
+ * Policy (what is blocked) stays in never-list.ts.
+ */
+export function canonicalWindowsPaths(text: string): string {
+  let t = text.toLowerCase();
+  const before = t;
+  // .NET folder lookups.
+  t = t
+    .replace(/\[(?:system\.)?environment\]\s*::\s*systemdirectory\b/g, SYSTEM32_DIR)
+    .replace(
+      /\[(?:system\.)?environment\]\s*::\s*getfolderpath\s*\(\s*(?:\[(?:system\.)?environment\+specialfolder\]\s*::\s*|['"]?)(systemx86|system|windows)['"]?\s*\)/g,
+      (_m, folder: string) =>
+        folder === "windows" ? WINDOWS_DIR : folder === "systemx86" ? SYSWOW64_DIR : SYSTEM32_DIR,
+    );
+  // Environment variables: $env:X, ${env:X}, %X%.
+  t = t
+    .replace(/\$\{env:(systemroot|windir)\}|\$env:(systemroot|windir)\b|%(systemroot|windir)%/g, WINDOWS_DIR)
+    .replace(/\$\{env:systemdrive\}|\$env:systemdrive\b|%systemdrive%/g, "c:");
+  // Separators: quotes / string concatenation between path pieces, "/" and "\\".
+  t = t
+    .replace(/(c:[^\s;|]*?)['"]?\s*\+\s*['"]?(?=[\\/])/g, "$1")
+    .replace(/(c:)['"]+(?=[\\/])/g, "$1")
+    .replace(/(c:\\windows)['"]+(?=[\\/])/g, "$1")
+    .replace(/(c:\\windows\\system32)['"]+(?=[\\/])/g, "$1");
+  // Join-Path <parent> <child> -> parent\child (simple literal forms only).
+  t = t.replace(
+    /\bjoin-path\s+(?:-path\s+)?['"]?(c:[^\s'"]*)['"]?\s+(?:-childpath\s+)?['"]?([^\s'";|)]+)['"]?/g,
+    (_m, parent: string, child: string) => `${parent}\\${child}`,
+  );
+  t = t.replace(/\bc:[^\s'";|)]*/g, (path) => path.replace(/[\\/]+/g, "\\"));
+  return t === before ? "" : t;
+}
+
 /** Strip common PowerShell obfuscation wrappers for a second pass. */
 export function deobfuscateLite(text: string): string {
   const canon = canonicalEquivalents(text);
-  return (canon ? `${canon} ` : "") + text
+  const paths = canonicalWindowsPaths(text);
+  return (canon ? `${canon} ` : "") + (paths ? `${paths}\n` : "") + text
     .replace(/`/g, "")
     .replace(/\$env:comspec/gi, "cmd")
     .replace(/\+\s*/g, "")

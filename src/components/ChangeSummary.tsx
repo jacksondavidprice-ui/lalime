@@ -11,15 +11,47 @@ function lastUser(snapshot: Pick<AppSnapshot, "messages">) {
 }
 function eligible(entry: ActivityEntry) { return entry.undoable && !entry.undone && !!entry.actionId; }
 function undoProblem(entry: ActivityEntry | undefined): string | null {
-  // Older snapshots can omit partial progress counts.
-  const result = entry?.undoResult as { status: string; reason?: string; restored?: number; total?: number } | undefined;
-  if (!result || (result.status !== "failed" && result.status !== "partly_restored")) return null;
+  const result = entry?.undoResult;
+  if (result?.status !== "failed") return null;
   const counted = Number.isInteger(result.restored) && Number.isInteger(result.total)
     && result.restored! > 0 && result.total! > result.restored!;
-  if (result.status === "failed" && !counted) return result.reason || t("changes.failed");
-  const summary = counted ? t("changes.partlyCount").replace("{restored}", String(result.restored)).replace("{total}", String(result.total))
-    : t("changes.partly");
-  return result.reason ? `${summary} ${result.reason}` : summary;
+  return counted ? t("changes.partlyCount").replace("{restored}", String(result.restored)).replace("{total}", String(result.total))
+    : t("changes.failed");
+}
+
+function UndoRecovery({ result, context }: { result: NonNullable<ActivityEntry["undoResult"]>; context: string }) {
+  const [opening, setOpening] = useState(false);
+  const [openFailed, setOpenFailed] = useState(false);
+  const inFlight = useRef<symbol | null>(null);
+  const kept = result.status === "failed" && result.items?.some((item) => item.recoveryPath);
+  const details = [result.status === "failed" ? result.reason : "", result.warning,
+    ...(result.items ?? []).map((item) => `${item.name}: ${item.reason}${item.recoveryPath ? `\n${item.recoveryPath}` : ""}`),
+  ].filter(Boolean).join("\n\n");
+  useEffect(() => {
+    setOpenFailed(false); setOpening(false);
+    return () => { inFlight.current = null; };
+  }, [result]);
+  async function openFolder() {
+    const open = getApi().openRecoveryFolder;
+    if (!open || inFlight.current) return;
+    const request = Symbol();
+    inFlight.current = request; setOpening(true); setOpenFailed(false);
+    try { const response = await open(); if (inFlight.current === request) setOpenFailed(!response.ok); }
+    catch { if (inFlight.current === request) setOpenFailed(true); }
+    finally { if (inFlight.current === request) { inFlight.current = null; setOpening(false); } }
+  }
+  return <>
+    {result.status === "restored" && result.warning && <p role="status" className="mt-2 text-xs leading-relaxed text-muted">{t("changes.recoveryWarning")}</p>}
+    {kept && <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+      <p>{t("changes.recoveryKept")}</p>
+      {getApi().openRecoveryFolder && <button type="button" aria-describedby={context} disabled={opening} onClick={() => void openFolder()}
+        className="min-h-9 rounded-lg border border-line px-3 font-semibold text-lime enabled:hover:bg-lime/5 disabled:opacity-45">{t("changes.openFolder")}</button>}
+    </div>}
+    {openFailed && <p role="status" className="mt-2 text-xs text-muted">{t("changes.openFolderFailed")}</p>}
+    {details && <details className="mt-2 text-xs text-muted"><summary className="w-fit cursor-pointer rounded py-2 font-semibold hover:text-ink">{t("changes.details")}</summary>
+      <pre data-testid="undo-details" tabIndex={0} aria-label={t("changes.detailsLabel")} className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg border border-line bg-paper p-3 font-mono leading-relaxed [overflow-wrap:anywhere]">{visibleText(details, true)}</pre>
+    </details>}
+  </>;
 }
 
 export function ChangeSummary() {
@@ -34,7 +66,7 @@ export function ChangeSummary() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [lastUndo, setLastUndo] = useState<{ entryId: string; taskId?: string } | null>(null);
   const [stoppedBatch, setStoppedBatch] = useState<{ entryId: string; taskId?: string } | null>(null);
-  const resultElements = useRef(new Map<string, HTMLParagraphElement>());
+  const resultElements = useRef(new Map<string, HTMLElement>());
   const operation = useRef<{ cancelled: boolean } | null>(null);
   const [reducedMotion, setReducedMotion] = useState(() => window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const previousRestores = useRef(new Map<string, boolean>());
@@ -148,11 +180,14 @@ export function ChangeSummary() {
         {restored ? <p role="status" tabIndex={-1} data-testid="undo-result" aria-describedby={`${contextId}-${encodeURIComponent(entry.id)}`}
           ref={(element) => { if (element) resultElements.current.set(entry.id, element); else resultElements.current.delete(entry.id); }}
           className="mt-2 flex items-center gap-1.5 rounded text-xs text-lime focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-lime"><span className="inline-flex" data-restore-cue={entry.id} ref={(element) => { if (element) restoreIcons.current.set(entry.id, element); else restoreIcons.current.delete(entry.id); }} aria-hidden><Check className="h-3.5 w-3.5" /></span>{t("changes.restored")}</p>
-          : eligible(entry) ? <button type="button" data-undo-trigger aria-describedby={`${contextId}-${encodeURIComponent(entry.id)}`} disabled={!!busy || running || !!pending} onClick={() => void restore([entry])} data-testid="undo-button" className="mt-2 inline-flex min-h-9 items-center gap-2 rounded-lg border border-lime/20 bg-lime/5 px-3 text-xs font-semibold text-lime transition enabled:hover:bg-lime/10 disabled:opacity-45"><Undo2 className="h-3.5 w-3.5" aria-hidden />{busy === entry.id ? t("changes.restoring") : t(error ? "changes.retry" : "changes.undo")}</button>
+          : eligible(entry) ? <button type="button" data-undo-trigger aria-describedby={`${contextId}-${encodeURIComponent(entry.id)}${pending ? ` ${contextId}-waiting` : ""}`} disabled={!!busy || running || !!pending} onClick={() => void restore([entry])} data-testid="undo-button" className="mt-2 inline-flex min-h-9 items-center gap-2 rounded-lg border border-lime/20 bg-lime/5 px-3 text-xs font-semibold text-lime transition enabled:hover:bg-lime/10 disabled:opacity-45"><Undo2 className="h-3.5 w-3.5" aria-hidden />{busy === entry.id ? t("changes.restoring") : t(error ? "changes.retry" : "changes.undo")}</button>
             : <p className="mt-2 text-xs text-muted">{t("changes.noUndo")}</p>}
-        {error && <p role="alert" tabIndex={-1} aria-describedby={`${contextId}-${encodeURIComponent(entry.id)}`}
+        {error && <div role="alert" tabIndex={-1} aria-describedby={`${contextId}-${encodeURIComponent(entry.id)}`}
           ref={(element) => { if (element) resultElements.current.set(entry.id, element); else resultElements.current.delete(entry.id); }}
-          className="mt-2 rounded text-xs leading-relaxed text-amber-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-300">{visibleText(error)}</p>}
+          className="mt-2 rounded text-xs leading-relaxed text-amber-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-300"><p>{visibleText(error)}</p>
+          {entry.undoResult?.status === "failed" && !!entry.undoResult.items?.length && <ul className="mt-2 space-y-2 text-ink-soft">{entry.undoResult.items.map((item, index) => <li key={index}><span className="font-semibold">{visibleText(item.name)}</span>{": "}<span>{visibleText(item.reason)}</span></li>)}</ul>}
+        </div>}
+        {entry.undoResult && <UndoRecovery result={entry.undoResult} context={`${contextId}-${encodeURIComponent(entry.id)}`} />}
         {error && stoppedBatch?.entryId === entry.id && stoppedBatch.taskId === user?.id
           && <p role="status" className="mt-2 text-xs leading-relaxed text-muted">{t("changes.batchStopped")}</p>}
         {restored && !entry.approvalWithdrawal && lastUndo?.entryId === entry.id && lastUndo.taskId === user?.id
@@ -171,7 +206,7 @@ export function ChangeSummary() {
   return <section data-testid="change-summary" className="rounded-2xl border border-line bg-paper-2/60 p-4 sm:p-5">
     {current.length > 0 && <div data-testid="change-summary-current">
       <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="flex items-center gap-2 text-sm font-semibold text-ink"><History className="h-4 w-4 text-lime" aria-hidden />{t("changes.title")}</h2>
-        {current.filter(eligible).length > 1 && <button type="button" data-undo-trigger disabled={!!busy || running || !!pending} onClick={() => void restore(current.filter(eligible))} className="min-h-9 rounded-lg border border-line px-3 text-xs text-muted enabled:hover:text-ink disabled:opacity-45">{t("changes.undoAll")}</button>}
+        {current.filter(eligible).length > 1 && <button type="button" data-undo-trigger aria-describedby={pending ? `${contextId}-waiting` : undefined} disabled={!!busy || running || !!pending} onClick={() => void restore(current.filter(eligible))} className="min-h-9 rounded-lg border border-line px-3 text-xs text-muted enabled:hover:text-ink disabled:opacity-45">{t("changes.undoAll")}</button>}
       </div>
       {!running && !pending && !busy && pendingCount === 0 && <p data-testid="activity-recap" role="status" aria-live="polite" aria-atomic="true" className="mt-3 border-l-2 border-lime/30 pl-3 text-xs leading-relaxed text-muted">
         {t(current.length === 1 ? "changes.recordOne" : "changes.recordCount").replace("{count}", String(current.length))}{" "}
@@ -180,7 +215,7 @@ export function ChangeSummary() {
       </p>}
       {rows(current)}
     </div>}
-    {(running || pending) && activity.some(eligible) && <p className="mt-3 text-xs text-muted">{t("changes.wait")}</p>}
+    {(running || pending) && activity.some(eligible) && <p id={`${contextId}-waiting`} className="mt-3 text-xs text-muted">{t(pending ? "changes.waitApproval" : "changes.wait")}</p>}
     {busy && <button type="button" onClick={() => { if (operation.current) operation.current.cancelled = true; }} className="mt-3 min-h-9 rounded-lg border border-line px-3 text-xs text-muted">{t("changes.stopUndo")}</button>}
     {history.length > 0 && (user ? <details ref={historyDetails} className={current.length ? "mt-4 border-t border-line pt-4" : ""}><summary className="cursor-pointer text-sm text-muted">{t("changes.history")}</summary>{rows(history)}</details>
       : <><h2 className="text-sm font-semibold text-ink">{t("changes.recorded")}</h2>{rows(history)}</>)}

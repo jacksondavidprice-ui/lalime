@@ -479,7 +479,6 @@
   "changes.nextNone": {"intent":"Describe an empty host approval queue after Undo","facts":["No approvals are waiting."]},
   "changes.nextReady": {"intent":"Invite the next request without inferring an unknown queue count","facts":["You can continue when you are ready."]},
   "changes.partlyCount": {"intent":"Report exact host counts without claiming full restore","facts":["Partly undone: {restored} of {total} items are back."]},
-  "changes.partly": {"intent":"Explain partial restoration when counts are unavailable","facts":["Partly undone. Some items are back, but this change is not finished."]},
   "changes.batchStopped": {"intent":"Explain why an Undo-all sequence paused at an incomplete restore","facts":["Undo all stopped here. Review this result before continuing."]},
   "empty.reassuranceTitle": {"intent":"Label first-use guidance","facts":["Before you begin"]},
   "empty.reassurance": {"intent":"Describe review and qualify Undo availability","facts":["You review important steps before they run. Look for Undo beside changes that Lalime can restore."]},
@@ -489,5 +488,12 @@
   "changes.undoCount": {"intent":"Count eligible Undo controls","facts":["Undo available for {count}."]},
   "changes.undoNone": {"intent":"Describe an absence of eligible Undo controls","facts":["No Undo actions available."]},
   "changes.restoreOne": {"intent":"Count only verified complete restores","facts":["1 restore verified."]},
-  "changes.restoreCount": {"intent":"Count only verified complete restores","facts":["{count} restores verified."]}
+  "changes.restoreCount": {"intent":"Count only verified complete restores","facts":["{count} restores verified."]},
+  "changes.waitApproval": {"intent":"Explain why Undo is disabled while consent waits","facts":["Answer the waiting approval first, then you can undo."]},
+  "changes.recoveryKept": {"intent":"Describe retained originals without a raw path","facts":["Kept in Lalime's recovery folder"]},
+  "changes.recoveryWarning": {"intent":"Distinguish restored files from recovery-list persistence","facts":["Your files are back. Lalime could not update its recovery list."]},
+  "changes.openFolder": {"intent":"Open the fixed host recovery folder","facts":["Open folder"]},
+  "changes.openFolderFailed": {"intent":"Allow another attempt without leaking diagnostics","facts":["Could not open the recovery folder. Try again."]},
+  "changes.details": {"intent":"Disclose full recovery diagnostics on request","facts":["Show details"]},
+  "changes.detailsLabel": {"intent":"Label the read-only recovery diagnostics","facts":["Undo details"]}
 }

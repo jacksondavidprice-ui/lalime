@@ -85,7 +85,7 @@ try {
     const row=page.getByTestId("change-entry").filter({hasText:"Moved sample A"});
     await row.getByTestId("undo-button").click();
     await row.getByRole("alert").waitFor();
-    assert.equal(await row.getByRole("alert").textContent(),"Partly undone: 2 of 3 items are back. One file was left alone.");
+    assert.equal(await row.getByRole("alert").textContent(),"Partly undone: 2 of 3 items are back.");
   });
   await check("batch9 Undo all moves focus to a later failed result", async page => {
     await page.evaluate(() => { const f=(window as unknown as {withdrawalFixture:Harness}).withdrawalFixture; f.outcomes([{status:"restored"},{status:"failed",reason:"The second change could not be restored."}]); f.delayUndo(); });
@@ -100,11 +100,11 @@ try {
     await page.waitForFunction(() => document.activeElement?.getAttribute("role")==="alert",undefined,{timeout:2000});
   });
   await check("batch9 authoritative partial result survives a verification read failure", async page => {
-    await page.evaluate(() => { const f=(window as unknown as {withdrawalFixture:Harness}).withdrawalFixture; f.outcome({status:"partly_restored",restored:2,total:3,reason:"One file was left alone."} as unknown as ActivityEntry["undoResult"]);f.failVerification(); });
+    await page.evaluate(() => { const f=(window as unknown as {withdrawalFixture:Harness}).withdrawalFixture; f.outcome({status:"failed",restored:2,total:3,reason:"One file was left alone."} as unknown as ActivityEntry["undoResult"]);f.failVerification(); });
     const row=page.getByTestId("change-entry").filter({hasText:"Moved sample A"}); await row.getByTestId("undo-button").click();
     await row.getByRole("button",{name:"Try Undo again",exact:true}).waitFor();
     await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-    assert.equal(await row.getByRole("alert").textContent(),"Partly undone: 2 of 3 items are back. One file was left alone.");
+    assert.equal(await row.getByRole("alert").textContent(),"Partly undone: 2 of 3 items are back.");
   });
   await check("batch9 Undo all explains why it stopped", async page => {
     await page.evaluate(() => (window as unknown as {withdrawalFixture:Harness}).withdrawalFixture.outcome({status:"failed",reason:"A newer file has that name, so it was left alone."}));
@@ -114,8 +114,8 @@ try {
     await page.getByTestId("change-entry").filter({hasText:"Moved sample B"}).getByRole("button",{name:"Undo",exact:true}).waitFor();
   });
   for (const [name, outcome, expected] of [
-    ["counted", { status: "partly_restored", restored: 2, total: 3, reason: "A newer file has that name, so it was left alone." }, "Partly undone: 2 of 3 items are back. A newer file has that name, so it was left alone."],
-    ["without counts", { status: "partly_restored", reason: "Review the remaining items." }, "Partly undone. Some items are back, but this change is not finished. Review the remaining items."],
+    ["counted", { status: "failed", restored: 2, total: 3, reason: "A newer file has that name, so it was left alone." }, "Partly undone: 2 of 3 items are back."],
+    ["without counts", { status: "failed", reason: "Review the remaining items." }, "Could not restore this change."],
   ] as const) {
     await check("batch9 partial Undo " + name + " is clear and focused", async page => {
       await page.evaluate(value => (window as unknown as {withdrawalFixture:Harness}).withdrawalFixture.outcome(value as unknown as ActivityEntry["undoResult"]), outcome);
@@ -129,7 +129,7 @@ try {
     });
   }
   for (const [kind, outcome, expected] of [
-    ["failed", { status: "failed", reason: "The file could not be restored. Try Undo again." }, "The file could not be restored. Try Undo again."],
+    ["failed", { status: "failed", reason: "The file could not be restored. Try Undo again." }, "Could not restore this change."],
     ["rejected", "reject", "Could not restore this change."],
     ["unverified", "silent", "The restore was not verified. Please try again."],
   ] as const) {
@@ -261,7 +261,7 @@ try {
   await check("withdrawal stays separate from restore failure and describes the next state", async (page) => {
     await publish(page, { activity: withNotice().map((entry) => entry.id === "affected" ? { ...entry, undoResult: { status: "failed", reason: "Sample restore failed." } } : entry) });
     await receipt(page).waitFor();
-    await page.getByTestId("change-summary").getByRole("alert").filter({ hasText: "Sample restore failed." }).waitFor();
+    await page.getByTestId("change-summary").getByRole("alert").filter({ hasText: "Could not restore this change." }).waitFor();
     assert.equal(await page.getByTestId("change-summary").getByText("Restore verified", { exact: true }).count(), 0);
     for (const [patch, next] of [
       [{ pendingApproval: pending, pendingApprovalCount: 1, running: false }, "Another step is waiting for your approval."],

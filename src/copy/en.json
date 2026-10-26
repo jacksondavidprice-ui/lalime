@@ -176,7 +176,6 @@
   "changes.nextNone": "No approvals are waiting.",
   "changes.nextReady": "You can continue when you are ready.",
   "changes.partlyCount": "Partly undone: {restored} of {total} items are back.",
-  "changes.partly": "Partly undone. Some items are back, but this change is not finished.",
   "changes.batchStopped": "Undo all stopped here. Review this result before continuing.",
   "empty.reassuranceTitle": "Before you begin",
   "empty.reassurance": "You review important steps before they run. Look for Undo beside changes that Lalime can restore.",
@@ -186,5 +185,12 @@
   "changes.undoCount": "Undo available for {count}.",
   "changes.undoNone": "No Undo actions available.",
   "changes.restoreOne": "1 restore verified.",
-  "changes.restoreCount": "{count} restores verified."
+  "changes.restoreCount": "{count} restores verified.",
+  "changes.waitApproval": "Answer the waiting approval first, then you can undo.",
+  "changes.recoveryKept": "Kept in Lalime's recovery folder",
+  "changes.recoveryWarning": "Your files are back. Lalime could not update its recovery list.",
+  "changes.openFolder": "Open folder",
+  "changes.openFolderFailed": "Could not open the recovery folder. Try again.",
+  "changes.details": "Show details",
+  "changes.detailsLabel": "Undo details"
 }

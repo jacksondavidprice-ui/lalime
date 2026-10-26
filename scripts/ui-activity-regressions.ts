@@ -141,7 +141,9 @@ try {
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await behavior(page, "fail");
     await page.getByTestId("change-summary-current").getByRole("button", { name: "Undo", exact: true }).first().click();
-    await page.getByText("Synthetic restore could not be verified", { exact: true }).waitFor();
+    await page.getByRole("alert").filter({ hasText: "Could not restore this change." }).waitFor();
+    await page.getByText("Show details", { exact: true }).click();
+    await page.getByTestId("undo-details").getByText("Synthetic restore could not be verified", { exact: true }).waitFor();
     await publish(page, { activity: initial.activity.map((entry) => ({ ...entry, undone: true })) });
     await page.getByText("Undo is not available for this entry.", { exact: true }).first().waitFor();
     assert.equal(await page.getByText("Restore verified", { exact: true }).count(), 0);
@@ -166,7 +168,9 @@ try {
     await behavior(page, "fail");
     const current = page.getByTestId("change-summary-current");
     await current.getByRole("button", { name: "Undo all available", exact: true }).click();
-    await current.getByText("Synthetic restore could not be verified", { exact: true }).waitFor();
+    await current.getByRole("alert").filter({ hasText: "Could not restore this change." }).waitFor();
+    await current.getByText("Show details", { exact: true }).click();
+    await current.getByTestId("undo-details").getByText("Synthetic restore could not be verified", { exact: true }).waitFor();
     assert.deepEqual(await calls(page), ["new2"]);
     await behavior(page, "restore");
     await current.getByRole("button", { name: "Try Undo again", exact: true }).click();

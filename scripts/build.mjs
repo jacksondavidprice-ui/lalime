@@ -1,10 +1,10 @@
 /**
  * Full app build: TypeScript + Vite + Electron compile, then Hands.exe on Windows.
  */
-import { cpSync, mkdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { copyRuntimeAssets } from "./copy-runtime-assets.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -16,11 +16,8 @@ function run(cmd, args) {
 run("npx", ["tsc", "-p", "tsconfig.node.json"]);
 run("npx", ["vite", "build"]);
 run("npx", ["tsc", "-p", "tsconfig.electron.json"]);
+run("node", [path.join("scripts", "build-preload.mjs")]);
 
-// Writer prompts are read at runtime next to the compiled stages.js.
-const promptsSrc = path.join(root, "writer", "prompts");
-const promptsDest = path.join(root, "dist-electron", "writer", "prompts");
-mkdirSync(promptsDest, { recursive: true });
-cpSync(promptsSrc, promptsDest, { recursive: true });
+copyRuntimeAssets();
 
 run("node", [path.join("scripts", "build-hands.mjs")]);

@@ -1,0 +1,111 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { EventEmitter } from "node:events";
+import { mkdtempSync, rmSync } from "node:fs";
+import path from "node:path";
+import os from "node:os";
+const state = vi.hoisted(() => ({ directory: "", clients: [] as any[], open: vi.fn(), deferredStart: null as Promise<void> | null }));
+vi.mock("electron", () => ({ app: { isPackaged: false, getPath: () => state.directory }, shell: { openExternal: state.open }, safeStorage: { isEncryptionAvailable: () => false } }));
+vi.mock("../electron/main/codex-client.js", () => ({ CodexAppServerClient: class extends EventEmitter {
+  constructor() { super(); state.clients.push(this); }
+  start = vi.fn(() => state.deferredStart ?? Promise.resolve());
+  stop = vi.fn();
+  loginWithChatgpt = vi.fn(async () => ({ authUrl: "https://auth.openai.com/authorize", loginId: "login-1" }));
+  loginWithApiKey = vi.fn(async () => {});
+  readAccount = vi.fn(async () => ({ account: null }));
+  logout = vi.fn(async () => {});
+  startThread = vi.fn(async () => "thread-1");
+  startTurn = vi.fn(async () => ({ turnId: "turn-1" }));
+  interruptTurn = vi.fn(async () => {});
+  respondApproval = vi.fn();
+  respondFileChangeApproval = vi.fn();
+  respondToolCall = vi.fn();
+} }));
+import { SessionController } from "../electron/main/session.js";
+import { MockHands } from "../hands/mock/index.js";
+import { WriterService } from "../writer/index.js";
+import * as writerKeys from "../electron/main/writer-key.js";
+
+beforeEach(() => { state.directory = mkdtempSync(path.join(os.tmpdir(), "lime-lifecycle-")); state.clients = []; state.deferredStart = null; });
+afterEach(() => { vi.restoreAllMocks(); rmSync(state.directory, { recursive: true, force: true }); });
+describe("session authentication and cancellation", () => {
+  it("does not present earlier actions as work done in a new turn", async () => {
+    vi.spyOn(writerKeys, "loadWriterKey").mockReturnValue("sk-ant-test");
+    const compose = vi.spyOn(WriterService.prototype, "composeReply").mockResolvedValue({ text: "Reply", source: "fallback" });
+    const session = new SessionController(new MockHands());
+    await session.signInChatgpt();
+    const client = state.clients[0];
+    session.attachLiveClient(client);
+    await session.sendMessage("Open display settings");
+    client.emit("serverRequest", { id: 103, method: "item/tool/call", params: { tool: "lalime_open_settings", arguments: { uri: "ms-settings:display" } } });
+    await vi.waitFor(() => expect(session.getSnapshot().pendingApproval).not.toBeNull());
+    await session.respondApproval("do_it", session.getSnapshot().pendingApproval!.action.id);
+    await vi.waitFor(() => expect(session.getSnapshot().activity).toHaveLength(1));
+    client.emit("item/completed", { item: { type: "agentMessage", text: "Opened settings." } });
+    client.emit("turn/completed", { turn: { id: "turn-1", status: "completed" } });
+    await vi.waitFor(() => expect(session.getSnapshot().running).toBe(false));
+    client.startTurn.mockResolvedValue({ turnId: "turn-2" });
+    await session.sendMessage("What is a monitor?");
+    client.emit("item/completed", { turnId: "turn-2", item: { type: "agentMessage", text: "A monitor is a screen." } });
+    client.emit("turn/completed", { turn: { id: "turn-2", status: "completed" } });
+    await vi.waitFor(() => expect(compose).toHaveBeenCalledTimes(2));
+    expect(compose.mock.calls[1][0].actions).toEqual([]);
+    session.dispose();
+  });
+  it("keeps a visible approval when a different action is blocked", async () => {
+    const session = new SessionController(new MockHands());
+    await session.signInChatgpt();
+    const client = state.clients[0];
+    session.attachLiveClient(client);
+    await session.sendMessage("Help with settings");
+    client.emit("serverRequest", { id: 101, method: "item/tool/call", params: { tool: "lalime_click", arguments: { name: "Apply", windowTitle: "Settings" } } });
+    await vi.waitFor(() => expect(session.getSnapshot().pendingApproval).not.toBeNull());
+    const actionId = session.getSnapshot().pendingApproval!.action.id;
+    client.emit("serverRequest", { id: 102, method: "item/commandExecution/requestApproval", params: { command: "Remove-Item C:\\Windows\\System32 -Recurse -Force" } });
+    await vi.waitFor(() => expect(session.getSnapshot().blockedNotice).not.toBeNull());
+    expect(session.getSnapshot().pendingApproval?.action.id).toBe(actionId);
+    session.dispose();
+  });
+  it("cannot restore an API login after disconnect", async () => {
+    let finish!: () => void;
+    state.deferredStart = new Promise<void>((resolve) => { finish = resolve; });
+    const session = new SessionController(new MockHands());
+    const login = session.signInApiKey("sk-test");
+    session.disconnect();
+    finish();
+    await login;
+    expect(session.getSnapshot().auth.state).toBe("signed_out");
+    expect(state.clients[0].loginWithApiKey).not.toHaveBeenCalled();
+  });
+  it("does not expose a submitted credential in an authentication error", async () => {
+    const session = new SessionController(new MockHands());
+    const login = session.signInApiKey("sk-test-value");
+    state.clients[0].loginWithApiKey.mockRejectedValue(new Error("Rejected sk-test-value"));
+    const result = await login;
+    expect(JSON.stringify([result, session.getSnapshot()])).not.toContain("sk-test-value");
+  });
+  it("does not report signed in until the matching browser login completes", async () => {
+    const session = new SessionController(new MockHands());
+    await session.signInChatgpt();
+    expect(session.getSnapshot().auth.state).toBe("signing_in");
+    const client = state.clients[0];
+    client.emit("account/login/completed", { loginId: "another-login", success: true });
+    expect(session.getSnapshot().auth.state).toBe("signing_in");
+    client.readAccount.mockResolvedValue({ account: { type: "chatgpt" } });
+    client.emit("account/login/completed", { loginId: "login-1", success: true });
+    await vi.waitFor(() => expect(session.getSnapshot().auth.state).toBe("signed_in"));
+    session.disconnect();
+  });
+  it("ignores completed turns after Stop", async () => {
+    const session = new SessionController(new MockHands());
+    await session.signInChatgpt();
+    const client = state.clients[0];
+    session.attachLiveClient(client);
+    await session.sendMessage("Hello");
+    session.stop();
+    client.emit("item/completed", { item: { type: "agentMessage", text: "Late answer" } });
+    client.emit("turn/completed", { turn: { status: "completed" } });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(session.getSnapshot().statusText).toBe("Stopped");
+    expect(session.getSnapshot().messages.some((m) => m.content === "Late answer")).toBe(false);
+  });
+});

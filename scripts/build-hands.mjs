@@ -32,9 +32,9 @@ if (process.platform !== "win32") {
 
 if (!hasDotnet()) {
   console.warn(
-    "build-hands: .NET SDK not found — Hands.exe will be missing until you install .NET 8 and re-run npm run build.",
+    "build-hands: .NET SDK not found. Install the .NET 8 SDK or newer and re-run npm run build. A Windows build requires a current Hands.exe.",
   );
-  process.exit(0);
+  process.exit(1);
 }
 
 console.log("build-hands: building Hands.exe…");

@@ -118,7 +118,7 @@ describe("LiveAgentHost + fake Codex", () => {
     expect(card.decision.kind).toMatch(/ask/);
 
     const activity = waitFor<{ summary: string }>((cb) => host.on("activity", cb));
-    host.respondApproval("do_it");
+    host.respondApproval("do_it", card.action.id);
     const act = await activity;
     expect(act.summary.toLowerCase()).toMatch(/recycle|installer/);
     client.stop();

@@ -46,7 +46,7 @@ function fakeUnpackagedTree(): { root: string; mainDir: string } {
   writeFileSync(path.join(root, "build", "icon.png"), "png");
   writeFileSync(path.join(mainDir, "index.js"), "");
   writeFileSync(
-    path.join(root, "dist-electron", "electron", "preload", "index.js"),
+    path.join(root, "dist-electron", "electron", "preload", "index.cjs"),
     "",
   );
   return { root, mainDir };
@@ -91,7 +91,7 @@ describe("app-paths (blank-window / Windows ../../ bug)", () => {
     const { root, mainDir } = fakeUnpackagedTree();
     const preload = resolvePreloadScript({ mainModuleDir: mainDir });
     expect(preload).toBe(
-      path.join(root, "dist-electron", "electron", "preload", "index.js"),
+      path.join(root, "dist-electron", "electron", "preload", "index.cjs"),
     );
     expect(existsSync(preload)).toBe(true);
   });
@@ -128,7 +128,7 @@ describe("app-paths (blank-window / Windows ../../ bug)", () => {
 
   it("matches the real compiled output layout after npm run build", () => {
     const mainDir = resolve("dist-electron/electron/main");
-    const preload = resolve("dist-electron/electron/preload/index.js");
+    const preload = resolve("dist-electron/electron/preload/index.cjs");
     const distHtml = resolve("dist/index.html");
     const icon = resolve("build/icon.png");
 

@@ -7,19 +7,25 @@
   "license": "MIT",
   "main": "dist-electron/electron/main/index.js",
   "type": "module",
+  "engines": {
+    "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
+  },
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:renderer": "vite --port 43123 --strictPort --host 127.0.0.1",
     "build": "node scripts/build.mjs",
-    "build:js": "tsc -p tsconfig.node.json && vite build && tsc -p tsconfig.electron.json",
+    "build:js": "tsc -p tsconfig.node.json && vite build && tsc -p tsconfig.electron.json && node scripts/build-preload.mjs && node scripts/copy-runtime-assets.mjs",
     "build:hands": "node scripts/build-hands.mjs",
     "preview": "vite preview --port 43123 --strictPort --host 127.0.0.1",
+    "pretest": "npm run build:js",
     "test": "vitest run",
+    "pretest:watch": "npm run build:js",
     "test:watch": "vitest",
     "test:ui": "tsx scripts/ui-smoke.ts",
+    "test:ui:chat": "tsx scripts/ui-chat-regressions.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
-    "fixture:headless": "LALIME_DEMO=1 tsx scripts/demo-headless.ts",
-    "demo:headless": "LALIME_DEMO=1 tsx scripts/demo-headless.ts",
+    "fixture:headless": "tsx scripts/demo-headless.ts",
+    "demo:headless": "tsx scripts/demo-headless.ts",
     "screenshots": "node scripts/capture-screenshots.mjs",
     "verify:electron-paths": "node scripts/verify-electron-paths.mjs",
     "secret-scan": "vitest run tests/secret-scan.test.ts",
@@ -47,13 +53,13 @@
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^5.0.1",
-    "electron": "^37.3.1",
+    "electron": "^45.0.0",
     "electron-builder": "^26.0.12",
     "playwright": "^1.64.1",
     "tailwindcss": "^4.1.12",
     "tsx": "^4.20.4",
     "typescript": "^5.9.2",
     "vite": "^7.1.3",
-    "vitest": "^3.2.4"
+    "vitest": "^5.0.5"
   }
 }

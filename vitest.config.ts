@@ -3,6 +3,8 @@ import path from "node:path";
 
 export default defineConfig({
   test: {
+    // Keep calls made during beforeAll for the application lifecycle tests.
+    clearMocks: false,
     environment: "node",
     include: [
       "guardian/tests/**/*.test.ts",

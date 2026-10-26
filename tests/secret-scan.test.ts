@@ -50,7 +50,7 @@ const FORBIDDEN = [
 ];
 
 function listedFiles(): string[] {
-  const out = execSync("git ls-files", { cwd: ROOT, encoding: "utf8" });
+  const out = execSync("git ls-files --cached --others --exclude-standard", { cwd: ROOT, encoding: "utf8" });
   return out
     .split("\n")
     .map((s) => s.trim())
@@ -63,7 +63,7 @@ function listedFiles(): string[] {
 }
 
 describe("secret scan", () => {
-  it("finds no committed credentials in tracked source", () => {
+  it("finds no credentials in tracked or new source files", () => {
     const hits: string[] = [];
     for (const file of listedFiles()) {
       let text: string;
@@ -76,10 +76,10 @@ describe("secret scan", () => {
         rule.re.lastIndex = 0;
         const matches = text.match(rule.re) ?? [];
         for (const m of matches) {
-          if (rule.allow.some((a) => a.test(m) || a.test(text))) continue;
+          if (rule.allow.some((a) => a.test(m))) continue;
           // Allow documented examples in .env.example comments
           if (file.endsWith(".env.example") && m.includes("sk-")) continue;
-          hits.push(`${file}: ${rule.name}: ${m.slice(0, 24)}…`);
+          hits.push(`${file}: ${rule.name}`);
         }
       }
     }

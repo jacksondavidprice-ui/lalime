@@ -92,11 +92,12 @@ await test("stdout and stderr drain concurrently", async (h) => {
   assert.match(result.output, /streams-ok/);
 });
 
-await test("PowerShell deadline returns before bridge timeout", async (h) => {
-  h.send({ id: "deadline", method: "powershell.run", params: { command: "Start-Sleep -Seconds 40" } });
-  const result = await h.response(25000);
-  assert.equal(result.ok, false);
-  assert.match(result.output, /timed out/i);
+// Batch 13 (Jackson C2): the former 20-second PowerShell deadline was removed; long repairs such as SFC/DISM must finish.
+await test("PowerShell has no 20-second deadline", async (h) => {
+  h.send({ id: "long", method: "powershell.run", params: { command: "Start-Sleep -Seconds 23; Write-Output 'long-ok'" } });
+  const result = await h.response(60000);
+  assert.equal(result.ok, true);
+  assert.match(result.output, /long-ok/);
 });
 
 await test("helper termination kills its PowerShell child", async (h) => {

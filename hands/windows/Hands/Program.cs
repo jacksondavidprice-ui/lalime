@@ -3,6 +3,7 @@
 
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -19,6 +20,11 @@ internal static class Program
     private static void Main(string[] args)
     {
         WindowsProcessLifetime.ContainCurrentProcess();
+        if (args.Contains("--elevated-worker"))
+        {
+            Environment.ExitCode = ElevatedCommandBroker.RunWorker(args, ExecutePowerShell);
+            return;
+        }
         if (args.Contains("--powershell-worker"))
         {
             RunPowerShellWorker();
@@ -34,8 +40,23 @@ internal static class Program
 
     private static void RunStdio()
     {
-        string? line;
-        while ((line = Console.ReadLine()) != null)
+        using var requests = new System.Collections.Concurrent.BlockingCollection<string>(128);
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                string? request;
+                while ((request = Console.ReadLine()) is not null)
+                    if (!requests.TryAdd(request)) Environment.Exit(1);
+            }
+            finally
+            {
+                // EOF means the host is gone, even if Dispatch is still running.
+                // Exit closes this process's job and any elevated-worker pipe.
+                Environment.Exit(0);
+            }
+        });
+        foreach (var line in requests.GetConsumingEnumerable())
         {
             if (string.IsNullOrWhiteSpace(line)) continue;
             var id = "";
@@ -61,13 +82,15 @@ internal static class Program
         method switch
         {
             "powershell.astCheck" => AstCheck(Str(paramsEl, "command")),
-            "powershell.run" => RunPowerShell(Str(paramsEl, "command"), Str(paramsEl, "summary")),
+            "powershell.run" => RunPowerShell(Str(paramsEl, "command"), Str(paramsEl, "summary"),
+                paramsEl.TryGetProperty("admin", out var admin) && admin.ValueKind == JsonValueKind.True),
             "settings.open" => OpenSettings(Str(paramsEl, "uri")),
             "screen.capture" => CaptureScreen(),
             "uia.listWindows" => ListWindows(),
             "uia.list" => ListElements(Str(paramsEl, "windowTitle")),
             "uia.click" => Click(Str(paramsEl, "name"), Str(paramsEl, "windowTitle")),
             "uia.type" => TypeText(Str(paramsEl, "text"), Str(paramsEl, "windowTitle")),
+            "uia.setValue" => SetElementValue(Str(paramsEl, "name"), Str(paramsEl, "value"), Str(paramsEl, "windowTitle")),
             "journal.undo" => Undo(Str(paramsEl, "journalId")),
             "stop" => Ok("stopped"),
             _ => Fail($"Unknown method: {method}")
@@ -87,10 +110,12 @@ internal static class Program
         return Ok("Pre-check passed");
     }
 
-    private static Dictionary<string, object?> RunPowerShell(string command, string summary)
+    private static Dictionary<string, object?> RunPowerShell(string command, string summary, bool admin = false)
     {
         var check = AstCheck(command);
         if (check["ok"] is false) return check;
+
+        if (admin) return ElevatedCommandBroker.Run(command, System.Diagnostics.Process.Start);
 
         // A separate job must end with each action, even when its shell exits first.
         var psi = new System.Diagnostics.ProcessStartInfo
@@ -111,8 +136,7 @@ internal static class Program
             var stderr = worker.StandardError.ReadToEndAsync();
             worker.StandardInput.WriteLine(JsonSerializer.Serialize(command));
             worker.StandardInput.Close();
-            if (!worker.WaitForExit(25_000))
-                return Fail("PowerShell worker timed out and was stopped. Completed changes cannot be undone automatically.");
+            worker.WaitForExit();
             if (!Task.WaitAll(new Task[] { stdout, stderr }, 1_000))
                 return Fail("PowerShell worker output did not close.");
             if (worker.ExitCode != 0) return Fail("PowerShell worker failed. Its child processes were stopped.");
@@ -164,15 +188,9 @@ internal static class Program
         psi.ArgumentList.Add(command);
         using var proc = System.Diagnostics.Process.Start(psi);
         if (proc is null) return Fail("Could not start PowerShell");
-        var stdoutTask = proc.StandardOutput.ReadToEndAsync();
-        var stderrTask = proc.StandardError.ReadToEndAsync();
-        // Leave time for the bridge to receive the failure before its own deadline.
-        if (!proc.WaitForExit(20_000))
-        {
-            proc.Kill(entireProcessTree: true);
-            proc.WaitForExit(3_000);
-            return Fail("PowerShell timed out and was stopped. Completed changes cannot be undone automatically.");
-        }
+        var stdoutTask = ReadBoundedOutput(proc.StandardOutput);
+        var stderrTask = ReadBoundedOutput(proc.StandardError);
+        proc.WaitForExit();
         if (!Task.WaitAll(new Task[] { stdoutTask, stderrTask }, 3_000))
             return Fail("PowerShell output did not close. Completed changes cannot be undone automatically.");
         var stdout = stdoutTask.Result;
@@ -182,6 +200,23 @@ internal static class Program
             ["ok"] = proc.ExitCode == 0,
             ["output"] = string.IsNullOrWhiteSpace(stdout) ? stderr : stdout
         };
+    }
+
+    private static async Task<string> ReadBoundedOutput(StreamReader reader)
+    {
+        const int limit = 65_536;
+        var output = new System.Text.StringBuilder();
+        var buffer = new char[4096];
+        var truncated = false;
+        int count;
+        while ((count = await reader.ReadAsync(buffer)) != 0)
+        {
+            var keep = Math.Min(count, limit - output.Length);
+            output.Append(buffer, 0, keep);
+            truncated |= keep != count;
+        }
+        if (truncated) output.Append("\n[Output truncated]");
+        return output.ToString();
     }
 
     private static Dictionary<string, object?> OpenSettings(string uri)
@@ -218,9 +253,8 @@ internal static class Program
     private static Dictionary<string, object?> ListWindows()
     {
         using var automation = new UIA3Automation();
-        var desktop = automation.GetDesktop();
-        var windows = desktop.FindAllChildren()
-            .Select(w => new { title = w.Name ?? "", pid = w.Properties.ProcessId.ValueOrDefault })
+        var windows = WindowsUiTargets.Enumerate(automation)
+            .Select(w => new { title = w.Title, pid = w.Root.Properties.ProcessId.ValueOrDefault })
             .Where(w => !string.IsNullOrWhiteSpace(w.title))
             .Take(40)
             .Cast<object>()
@@ -231,13 +265,14 @@ internal static class Program
     private static Dictionary<string, object?> ListElements(string windowTitle)
     {
         using var automation = new UIA3Automation();
-        var root = FindWindow(automation, windowTitle) ?? automation.GetDesktop();
+        var root = string.IsNullOrWhiteSpace(windowTitle) ? automation.GetDesktop() : FindWindow(automation, windowTitle);
+        if (root is null) return Fail($"Window not found or ambiguous: {windowTitle}");
         var elements = root.FindAllDescendants()
             .Select(e => new
             {
                 name = e.Name ?? "",
                 controlType = e.ControlType.ToString(),
-                automationId = e.AutomationId ?? ""
+                automationId = e.Properties.AutomationId.ValueOrDefault ?? ""
             })
             .Where(e => !string.IsNullOrWhiteSpace(e.name))
             .Take(80)
@@ -253,10 +288,85 @@ internal static class Program
         using var automation = new UIA3Automation();
         var root = FindWindow(automation, windowTitle);
         if (root is null) return Fail($"Window not found or ambiguous: {windowTitle}");
-        var elements = root.FindAllDescendants(cf => cf.ByName(name));
+        var elements = root.FindAllDescendants(cf => cf.ByName(name)).Where(CanClick).ToArray();
         if (elements.Length != 1) return Fail($"Element not found or ambiguous: {name}");
-        elements[0].Click();
+        var element = elements[0];
+        if (!element.IsEnabled) return Fail("The requested element is disabled.");
+        if (element.Patterns.Invoke.PatternOrDefault is { } invoke) invoke.Invoke();
+        else if (element.Patterns.Toggle.PatternOrDefault is { } toggle) toggle.Toggle();
+        else if (element.Patterns.SelectionItem.PatternOrDefault is { } selection) selection.Select();
+        else element.Click();
         return Ok($"Clicked {name}");
+    }
+
+    private static bool CanClick(AutomationElement element) => element.IsEnabled
+        && !element.Properties.IsPassword.ValueOrDefault
+        && (element.Patterns.Invoke.PatternOrDefault is not null
+            || element.Patterns.Toggle.PatternOrDefault is not null
+            || element.Patterns.SelectionItem.PatternOrDefault is not null
+            || element.ControlType is FlaUI.Core.Definitions.ControlType.Button
+                or FlaUI.Core.Definitions.ControlType.Hyperlink or FlaUI.Core.Definitions.ControlType.ComboBox
+                or FlaUI.Core.Definitions.ControlType.Edit or FlaUI.Core.Definitions.ControlType.TabItem);
+
+    private static bool CanSetValue(AutomationElement element) => element.IsEnabled
+        && !element.Properties.IsPassword.ValueOrDefault
+        && (element.Patterns.Toggle.PatternOrDefault is not null
+            || element.Patterns.RangeValue.PatternOrDefault is not null
+            || element.ControlType == FlaUI.Core.Definitions.ControlType.ComboBox
+            || (element.ControlType == FlaUI.Core.Definitions.ControlType.Edit && element.Patterns.Value.PatternOrDefault is not null));
+
+    private static Dictionary<string, object?> SetElementValue(string name, string value, string windowTitle)
+    {
+        if (string.IsNullOrWhiteSpace(windowTitle) || string.IsNullOrWhiteSpace(name))
+            return Fail("A window title and element name are required.");
+        using var automation = new UIA3Automation();
+        var root = FindWindow(automation, windowTitle);
+        if (root is null) return Fail($"Window not found or ambiguous: {windowTitle}");
+        var elements = root.FindAllDescendants(cf => cf.ByName(name)).Where(CanSetValue).ToArray();
+        if (elements.Length != 1) return Fail($"Element not found or ambiguous: {name}");
+        var element = elements[0];
+        if (!element.IsEnabled || element.Properties.IsPassword.ValueOrDefault)
+            return Fail("Disabled controls and password fields are not supported.");
+        if (element.Patterns.Toggle.PatternOrDefault is { } toggle)
+        {
+            var requested = value.ToLowerInvariant() switch
+            {
+                "on" or "true" => FlaUI.Core.Definitions.ToggleState.On,
+                "off" or "false" => FlaUI.Core.Definitions.ToggleState.Off,
+                _ => (FlaUI.Core.Definitions.ToggleState?)null
+            };
+            if (requested is null) return Fail("Use on or off for this switch.");
+            for (var attempt = 0; attempt < 3 && toggle.ToggleState.Value != requested; attempt++) toggle.Toggle();
+            return toggle.ToggleState.Value == requested ? Ok($"Set {name} to {value}") : Fail("The switch did not reach the requested state.");
+        }
+        if (element.Patterns.RangeValue.PatternOrDefault is { } range)
+        {
+            if (range.IsReadOnly.Value || !double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var number)
+                || !double.IsFinite(number) || number < range.Minimum.Value || number > range.Maximum.Value)
+                return Fail("Use a number within this control's allowed range.");
+            range.SetValue(number);
+            return Ok($"Set {name} to {value}");
+        }
+        if (element.ControlType == FlaUI.Core.Definitions.ControlType.ComboBox)
+        {
+            var combo = element.AsComboBox();
+            combo.Expand();
+            try
+            {
+                var matches = combo.Items.Where(item => item.Name == value).ToArray();
+                if (matches.Length != 1) return Fail("The requested option was not found or is ambiguous.");
+                matches[0].Select();
+                return Ok($"Set {name} to {value}");
+            }
+            finally { combo.Collapse(); }
+        }
+        if (element.ControlType == FlaUI.Core.Definitions.ControlType.Edit
+            && element.Patterns.Value.PatternOrDefault is { } text && !text.IsReadOnly.Value)
+        {
+            text.SetValue(value);
+            return Ok($"Set {name}");
+        }
+        return Fail("This control does not support setting a value.");
     }
 
     [DllImport("user32.dll")]
@@ -268,7 +378,8 @@ internal static class Program
         using var automation = new UIA3Automation();
         var window = FindWindow(automation, windowTitle);
         if (window is null) return Fail($"Window not found or ambiguous: {windowTitle}");
-        if (window.Properties.NativeWindowHandle.ValueOrDefault != GetForegroundWindow())
+        var targetHandle = window.Properties.NativeWindowHandle.ValueOrDefault;
+        if (targetHandle == IntPtr.Zero || GetAncestor(targetHandle, 2) != GetForegroundWindow())
             return Fail("The requested window must be in the foreground.");
         var focused = automation.FocusedElement();
         if (focused is null || focused.Properties.ProcessId.ValueOrDefault != window.Properties.ProcessId.ValueOrDefault)
@@ -281,6 +392,9 @@ internal static class Program
         return Ok("Set the focused field text");
     }
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetAncestor(IntPtr window, uint flags);
+
     private static Dictionary<string, object?> Undo(string journalId)
     {
         return Fail("Automatic undo is not available. Restore recycled items manually from the Windows Recycle Bin.");
@@ -289,8 +403,8 @@ internal static class Program
     private static AutomationElement? FindWindow(UIA3Automation automation, string title)
     {
         if (string.IsNullOrWhiteSpace(title)) return null;
-        var matches = automation.GetDesktop().FindAllChildren(cf => cf.ByName(title));
-        return matches.Length == 1 ? matches[0] : null;
+        var matches = WindowsUiTargets.Enumerate(automation).Where(window => window.Title == title).ToArray();
+        return matches.Length == 1 ? matches[0].Root : null;
     }
 
     private static string Str(JsonElement el, string name)

@@ -159,6 +159,7 @@ export class NodeHands implements HandsClient {
   private stopped = false;
   private generation = 0;
   private scratch: string;
+  private shellControllers = new Set<AbortController>();
 
   constructor(scratchRoot?: string, private readonly allowedRoots = KNOWN_FOLDERS.map((name) => path.join(os.homedir(), name))) {
     this.scratch = scratchRoot ?? path.join(os.tmpdir(), "lalime-hands");
@@ -171,6 +172,7 @@ export class NodeHands implements HandsClient {
   stop(): void {
     this.stopped = true;
     this.generation++;
+    for (const controller of this.shellControllers) controller.abort();
   }
 
   resume(): void {
@@ -196,10 +198,13 @@ export class NodeHands implements HandsClient {
     return { blocked: false };
   }
 
-  async runPowerShell(command: string, summary: string): Promise<HandsResult> {
+  async runPowerShell(command: string, summary: string, options?: { admin?: boolean }): Promise<HandsResult> {
     if (this.stopped) return { ok: false, output: "Stopped by user." };
+    if (options?.admin) return { ok: false, output: "Native Windows Hands is required for one-command administrator approval." };
+    const generation = this.generation;
     const pre = await this.precheckPowerShell(command);
     if (pre.blocked) return { ok: false, output: pre.reason ?? "Blocked" };
+    if (this.stopped || generation !== this.generation) return { ok: false, output: "Stopped by user." };
 
     // On non-Windows, record intent only — do not shell out to real PowerShell.
     if (process.platform !== "win32") {
@@ -212,11 +217,13 @@ export class NodeHands implements HandsClient {
       };
     }
 
+    const controller = new AbortController();
+    this.shellControllers.add(controller);
     try {
       const { stdout, stderr } = await execFileAsync(
         "powershell.exe",
         ["-NoProfile", "-NonInteractive", "-Command", command],
-        { timeout: 60_000, windowsHide: true, maxBuffer: 2_000_000 },
+        { signal: controller.signal, windowsHide: true, maxBuffer: 2_000_000 },
       );
       const jid = id();
       this.journal.push({ id: jid, summary, undone: false });
@@ -226,10 +233,13 @@ export class NodeHands implements HandsClient {
         journalId: jid,
       };
     } catch (err) {
+      if (controller.signal.aborted) return { ok: false, output: "Stopped by user." };
       return {
         ok: false,
         output: err instanceof Error ? err.message : "PowerShell failed",
       };
+    } finally {
+      this.shellControllers.delete(controller);
     }
   }
 

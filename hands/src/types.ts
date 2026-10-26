@@ -34,7 +34,7 @@ export interface HandsClient {
   stop(): void;
   resume(): void;
   listJournal(): Array<{ id: string; summary: string; undone: boolean }>;
-  runPowerShell(command: string, summary: string): Promise<HandsResult>;
+  runPowerShell(command: string, summary: string, options?: { admin?: boolean }): Promise<HandsResult>;
   /** Pattern-based command precheck. This is not a complete PowerShell AST sandbox. */
   precheckPowerShell(command: string): Promise<{ blocked: boolean; reason?: string }>;
   moveToRecycleBin(paths: string[], summary: string): Promise<HandsResult>;
@@ -44,5 +44,6 @@ export interface HandsClient {
   listUiElements(windowTitle?: string): Promise<{ ok: boolean; elements: WindowElement[] }>;
   clickElement(name: string, windowTitle?: string): Promise<HandsResult>;
   typeText(text: string, windowTitle?: string): Promise<HandsResult>;
+  setElementValue?(name: string, value: string, windowTitle?: string): Promise<HandsResult>;
   undo(journalId: string): Promise<HandsResult>;
 }

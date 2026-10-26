@@ -104,6 +104,7 @@ function resolveExe(): string {
 export class WindowsHandsBridge implements HandsClient {
   readonly backend = "windows" as const;
   private proc: ChildProcessWithoutNullStreams | null = null;
+  private stoppingProcesses = new Set<ChildProcessWithoutNullStreams>();
   private nextId = 1;
   private pending = new Map<string, { resolve: (v: BridgeResponse) => void }>();
   private stopped = false;
@@ -119,15 +120,18 @@ export class WindowsHandsBridge implements HandsClient {
   }
 
   private ensureProc(): ChildProcessWithoutNullStreams {
+    if (this.stoppingProcesses.size) throw new Error("The previous Hands process is still stopping.");
     if (this.proc) return this.proc;
     const exe = resolveExe();
     if (!existsSync(exe)) {
       throw new Error(handsMissingMessage(exe));
     }
-    this.proc = spawn(exe, ["--stdio"], { stdio: ["pipe", "pipe", "pipe"] });
-    const rl = readline.createInterface({ input: this.proc.stdout });
+    const proc = spawn(exe, ["--stdio"], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+    this.proc = proc;
+    const rl = readline.createInterface({ input: proc.stdout });
     rl.on("line", (line) => {
       try {
+        if (this.proc !== proc) return;
         const msg = JSON.parse(line) as BridgeResponse & { id: string };
         const p = this.pending.get(msg.id);
         if (p) {
@@ -145,10 +149,44 @@ export class WindowsHandsBridge implements HandsClient {
         // ignore
       }
     });
-    this.proc.on("exit", () => {
+    const ended = (): void => {
+      this.stoppingProcesses.delete(proc);
+      if (this.proc !== proc) return;
       this.proc = null;
-    });
-    return this.proc;
+      rl.close();
+      this.settlePending("Hands stopped before returning a result. Completed changes may remain.");
+    };
+    const failed = (): void => {
+      if (this.proc !== proc) return;
+      // An IPC failure does not mean the native action has stopped.
+      this.proc = null;
+      rl.close();
+      this.settlePending("Hands stopped before returning a result. Completed changes may remain.");
+      this.terminateProcess(proc);
+    };
+    proc.on("exit", ended);
+    proc.on("close", ended);
+    proc.on("error", failed);
+    proc.stdin.on("error", failed);
+    // Drain diagnostic output so it cannot block the native worker.
+    proc.stderr.resume();
+    return proc;
+  }
+
+  private terminateProcess(proc: ChildProcessWithoutNullStreams): void {
+    this.stoppingProcesses.add(proc);
+    // Native stdin EOF also cancels its active action and its elevated worker.
+    proc.stdin.destroy();
+    try {
+      if (proc.kill()) this.stoppingProcesses.delete(proc);
+    } catch {
+      // Keep the process tracked until exit/close confirms termination.
+    }
+  }
+
+  private settlePending(output: string): void {
+    for (const request of this.pending.values()) request.resolve({ ok: false, output });
+    this.pending.clear();
   }
 
   private call(method: string, params: Record<string, unknown> = {}): Promise<BridgeResponse> {
@@ -157,24 +195,25 @@ export class WindowsHandsBridge implements HandsClient {
       return Promise.resolve({ ok: false, output: handsMissingMessage(this.exePath()) });
     }
     const id = String(this.nextId++);
-    const proc = this.ensureProc();
-    proc.stdin.write(`${JSON.stringify({ id, method, params })}\n`);
     return new Promise((resolve) => {
-      this.pending.set(id, { resolve });
-      setTimeout(() => {
-        if (this.pending.has(id)) {
-          this.pending.delete(id);
-          resolve({ ok: false, output: "Hands.exe timed out" });
-        }
-      }, 30_000);
+      try {
+        const proc = this.ensureProc();
+        this.pending.set(id, { resolve });
+        proc.stdin.write(`${JSON.stringify({ id, method, params })}\n`);
+      } catch {
+        this.pending.delete(id);
+        resolve({ ok: false, output: "Hands could not start the action." });
+      }
     });
   }
 
   stop(): void {
     this.stopped = true;
     this.recycleGeneration++;
-    this.proc?.kill();
+    const proc = this.proc;
     this.proc = null;
+    this.settlePending("Stopped by user.");
+    if (proc) this.terminateProcess(proc);
   }
 
   resume(): void {
@@ -190,8 +229,8 @@ export class WindowsHandsBridge implements HandsClient {
     return { blocked: !r.ok, reason: r.ok ? undefined : r.output };
   }
 
-  async runPowerShell(command: string, summary: string) {
-    const r = await this.call("powershell.run", { command, summary });
+  async runPowerShell(command: string, summary: string, options?: { admin?: boolean }) {
+    const r = await this.call("powershell.run", { command, summary, admin: options?.admin === true });
     if (r.journalId) {
       this.journal.push({ id: r.journalId, summary, undone: false });
     }
@@ -263,8 +302,17 @@ export class WindowsHandsBridge implements HandsClient {
     return this.call("settings.open", { uri });
   }
 
-  async screenshot() {
-    return this.call("screen.capture", {});
+  async screenshot(): Promise<HandsResult> {
+    const result = await this.call("screen.capture", {});
+    if (result.output === "Stopped by user.") return result;
+    if (result.ok && result.imageDataUrl) return result;
+    const reason = result.ok
+      ? "Hands returned no image."
+      : result.output.trim().slice(0, 1_000) || "Windows did not provide a reason.";
+    return {
+      ok: false,
+      output: `Windows screen capture failed: ${reason} No screenshot was returned. Try lalime_list_ui or a read-only check instead.`,
+    };
   }
 
   async listWindows() {
@@ -283,6 +331,10 @@ export class WindowsHandsBridge implements HandsClient {
 
   async typeText(text: string, windowTitle?: string) {
     return this.call("uia.type", { text, windowTitle });
+  }
+
+  async setElementValue(name: string, value: string, windowTitle?: string) {
+    return this.call("uia.setValue", { name, value, windowTitle });
   }
 
   async undo(journalId: string) {

@@ -74,17 +74,21 @@ try {
   // Capture the existing session through its real IPC getter. Replace only the
   // OS backend before any provider connects. Guardian and session stay intact.
   await app.evaluate(async ({ app }, sourceRoot) => {
-    const { pathToFileURL } = await import("node:url");
-    const path = await import("node:path");
-    const { SessionController } = await import(pathToFileURL(path.join(app.isPackaged ? app.getAppPath() : sourceRoot, "dist-electron/electron/main/session.js")).href);
+    // Playwright's evaluate runs without an ESM dynamic-import callback, so
+    // load the compiled module through require(esm) on the same module graph.
+    const path = process.getBuiltinModule("node:path");
+    const requireCompiled = process.getBuiltinModule("node:module").createRequire(path.join(sourceRoot, "package.json"));
+    const { SessionController } = requireCompiled(path.join(app.isPackaged ? app.getAppPath() : sourceRoot, "dist-electron/electron/main/session.js"));
     const original = SessionController.prototype.getSnapshot;
     SessionController.prototype.getSnapshot = function () { globalThis.contractSession = this; return original.call(this); };
   }, appRoot);
   await page.evaluate(() => window.lalime.getSnapshot());
   await app.evaluate(async ({ app }, sourceRoot) => {
-    const { pathToFileURL } = await import("node:url");
-    const path = await import("node:path");
-    const { MockHands } = await import(pathToFileURL(path.join(app.isPackaged ? app.getAppPath() : sourceRoot, "dist-electron/hands/mock/index.js")).href);
+    // Playwright's evaluate runs without an ESM dynamic-import callback, so
+    // load the compiled module through require(esm) on the same module graph.
+    const path = process.getBuiltinModule("node:path");
+    const requireCompiled = process.getBuiltinModule("node:module").createRequire(path.join(sourceRoot, "package.json"));
+    const { MockHands } = requireCompiled(path.join(app.isPackaged ? app.getAppPath() : sourceRoot, "dist-electron/hands/mock/index.js"));
     const hands = new MockHands();
     globalThis.contractCalls = [];
     for (const method of ["listWindows", "listUiElements", "clickElement", "openSettings", "moveToRecycleBin", "undo"]) {
@@ -117,30 +121,42 @@ try {
   const finish = async (request) => { reply(request, text("Fixture task completed.")); await waitState((state) => !state.running); };
   const countCalls = (method) => app.evaluate((_, name) => globalThis.contractCalls.filter((call) => call.method === name).length, method);
 
-  let request = await start("Open Display settings repeatedly to test one exact task grant.");
-  reply(request, tool("lalime_open_settings", { uri: "ms-settings:display" }));
+  // RepeatGuard refuses a third identical call in one turn, so the revoke check
+  // and the same-task reuse check each use at most two identical calls.
+  let request = await start("Open Sound settings to test revoking one exact task grant.");
+  reply(request, tool("lalime_open_settings", { uri: "ms-settings:sound" }));
   let card = await approval();
   assert.equal(card.canAllowForTask, true);
-  assert.equal((await snapshot()).pendingApprovalCount, 1);
   await page.getByRole("button", { name: "Allow for this task", exact: true }).click();
   request = await nextRequest();
   assert.equal((await snapshot()).taskGrants.length, 1);
   assert.equal(await countCalls("openSettings"), 1);
-  reply(request, tool("lalime_open_settings", { uri: "ms-settings:display" }));
-  request = await nextRequest();
-  assert.equal(await countCalls("openSettings"), 2);
-  assert.equal((await snapshot()).pendingApprovalCount, 0);
   await page.getByRole("button", { name: "Open plan and activity", exact: true }).click();
   const activityDialog = page.getByRole("dialog", { name: "Plan and activity", exact: true });
   await activityDialog.getByTestId("task-grants").getByRole("button", { name: "Revoke", exact: true }).click();
   await waitState((state) => state.taskGrants.length === 0);
   await activityDialog.getByTestId("task-grants").waitFor({ state: "hidden" });
   await activityDialog.getByRole("button", { name: "Close", exact: true }).click();
-  reply(request, tool("lalime_open_settings", { uri: "ms-settings:display" }));
+  reply(request, tool("lalime_open_settings", { uri: "ms-settings:sound" }));
   await approval();
-  assert.equal(await countCalls("openSettings"), 2);
+  assert.equal(await countCalls("openSettings"), 1);
   await page.getByTestId("approval-not-now").click();
   await finish(await nextRequest());
+
+  request = await start("Open Display settings twice to test one exact task grant.");
+  reply(request, tool("lalime_open_settings", { uri: "ms-settings:display" }));
+  card = await approval();
+  assert.equal(card.canAllowForTask, true);
+  assert.equal((await snapshot()).pendingApprovalCount, 1);
+  await page.getByRole("button", { name: "Allow for this task", exact: true }).click();
+  request = await nextRequest();
+  assert.equal((await snapshot()).taskGrants.length, 1);
+  assert.equal(await countCalls("openSettings"), 2);
+  reply(request, tool("lalime_open_settings", { uri: "ms-settings:display" }));
+  request = await nextRequest();
+  assert.equal(await countCalls("openSettings"), 3);
+  assert.equal((await snapshot()).pendingApprovalCount, 0);
+  await finish(request);
   pass("HTTP tool grant, same-task reuse, renderer Revoke, and fresh approval after revocation");
 
   request = await start("Move the fixture Downloads file to the Recycle Bin.");

@@ -16,12 +16,12 @@ vi.mock("electron", () => ({
     handle: (name: string, handler: (...args: any[]) => any) => transport.handlers.set(name, handler),
   },
 }));
-import { SessionController } from "../artifacts/codex-c-batch11/dist-electron/electron/main/session.js";
-import { registerIpc } from "../artifacts/codex-c-batch11/dist-electron/electron/main/ipc.js";
-import { MockHands } from "../artifacts/codex-c-batch11/dist-electron/hands/mock/index.js";
-import { NodeHands } from "../artifacts/codex-c-batch11/dist-electron/hands/src/node-hands.js";
-import { WriterService } from "../artifacts/codex-c-batch11/dist-electron/writer/index.js";
-import * as writerKeys from "../artifacts/codex-c-batch11/dist-electron/electron/main/writer-key.js";
+import { SessionController } from "../artifacts/codex-c-batch12/dist-electron/electron/main/session.js";
+import { registerIpc } from "../artifacts/codex-c-batch12/dist-electron/electron/main/ipc.js";
+import { MockHands } from "../artifacts/codex-c-batch12/dist-electron/hands/mock/index.js";
+import { NodeHands } from "../artifacts/codex-c-batch12/dist-electron/hands/src/node-hands.js";
+import { WriterService } from "../artifacts/codex-c-batch12/dist-electron/writer/index.js";
+import * as writerKeys from "../artifacts/codex-c-batch12/dist-electron/electron/main/writer-key.js";
 
 class Client extends EventEmitter {
   startThread = vi.fn(async () => "thread");
@@ -33,7 +33,7 @@ class Client extends EventEmitter {
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 it.each([{ restored: true, historical: false }, { restored: false, historical: false }, { restored: false, historical: true }])("live compiled host withdrawal reaches real renderer: %j", async ({ restored, historical }) => {
-  const evidence = path.resolve("scratch/qa-batch11");
+  const evidence = path.resolve("scratch/qa-batch12");
   mkdirSync(evidence, { recursive: true });
   transport.directory = mkdtempSync(path.join(evidence, "live-session-profile-"));
   transport.handlers.clear();
@@ -55,7 +55,7 @@ it.each([{ restored: true, historical: false }, { restored: false, historical: f
     const contents = { mainFrame: frame, send(channel: string, snapshot: unknown) { events.emit(channel, {}, snapshot); } };
     registerIpc(session, () => ({ webContents: contents }) as never);
     let api: any;
-    const preload = path.resolve("artifacts/codex-c-batch11/dist-electron/electron/preload/index.cjs");
+    const preload = path.resolve("artifacts/codex-c-batch12/dist-electron/electron/preload/index.cjs");
     vm.runInNewContext(readFileSync(preload, "utf8"), { require(name: string) {
       expect(name).toBe("electron");
       return {
@@ -158,7 +158,13 @@ it.each([{ restored: true, historical: false }, { restored: false, historical: f
     } else {
       expect(entry.undone).not.toBe(true);
       expect(providerReplies).toContain(output);
-      await page.getByRole("alert").filter({ hasText: output }).waitFor();
+      const failureAlert = page.getByRole("alert").filter({ hasText: "Could not restore this change." });
+      await failureAlert.waitFor();
+      expect(await failureAlert.textContent()).not.toContain(output);
+      expect(await page.getByTestId("undo-details").isVisible()).toBe(false);
+      await page.getByText("Show details", { exact: true }).click();
+      await page.getByTestId("undo-details").waitFor();
+      expect(await page.getByTestId("undo-details").textContent()).toBe(output);
       expect(await page.getByTestId("undo-result").count()).toBe(0);
       expect(await page.getByTestId("change-summary").textContent()).toContain(output);
     }
@@ -197,7 +203,7 @@ it.each([{ restored: true, historical: false }, { restored: false, historical: f
 }, 60000);
 
 it("live NodeHands partial restore and readable command reach the renderer and model", async () => {
-  const evidence = path.resolve("scratch/qa-batch11");
+  const evidence = path.resolve("scratch/qa-batch12");
   mkdirSync(evidence, { recursive: true });
   transport.directory = mkdtempSync(path.join(evidence, "live-partial-profile-"));
   transport.handlers.clear();
@@ -223,7 +229,7 @@ it("live NodeHands partial restore and readable command reach the renderer and m
     const contents = { mainFrame: frame, send(channel: string, snapshot: unknown) { events.emit(channel, {}, snapshot); } };
     registerIpc(session, () => ({ webContents: contents }) as never);
     let api: any;
-    const preload = path.resolve("artifacts/codex-c-batch11/dist-electron/electron/preload/index.cjs");
+    const preload = path.resolve("artifacts/codex-c-batch12/dist-electron/electron/preload/index.cjs");
     vm.runInNewContext(readFileSync(preload, "utf8"), { require(name: string) {
       expect(name).toBe("electron");
       return {
@@ -311,6 +317,17 @@ it("live NodeHands partial restore and readable command reach the renderer and m
     expect(await page.getByTestId("approval-withdrawal").textContent()).not.toMatch(/declined/i);
     const change = page.getByTestId("change-summary");
     expect(await change.textContent()).toContain("Partly undone: 2 of 3 items are back.");
+    const partialAlert = change.getByRole("alert");
+    expect(await partialAlert.textContent()).toContain("Mom\u2019s birthday photos.zip");
+    expect(await partialAlert.textContent()).not.toContain(journal);
+    expect(await partialAlert.textContent()).not.toContain(documents);
+    expect(entry.undoResult.items).toHaveLength(1);
+    expect(entry.undoResult.items[0].name).toBe("Mom\u2019s birthday photos.zip");
+    expect(await change.getByTestId("undo-details").isVisible()).toBe(false);
+    expect(await change.getByRole("button", { name: "Open folder", exact: true }).count()).toBe(1);
+    await change.getByText("Show details", { exact: true }).click();
+    await change.getByTestId("undo-details").waitFor();
+    expect(await change.getByTestId("undo-details").textContent()).toContain(entry.undoResult.reason);
     expect(await change.textContent()).toContain(entry.undoResult.reason);
     const providerReplies = client.respondApproval.mock.calls.map(call => JSON.stringify(call)).join("\n")
       + "\n" + client.respondToolCall.mock.calls.map(call => JSON.stringify(call)).join("\n");

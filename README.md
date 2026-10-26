@@ -19,7 +19,7 @@ Congressional App Challenge 2026 — **Jackson Price** (solo), TX-37.
 2. Open Lalime and click **Sign in with ChatGPT** (needs Codex: `npm i -g @openai/codex`), or open Settings and add your own provider API key.
 3. Send a first message. A real reply is how you know the connection works; "Connected" alone only means the login was saved.
 
-SHA-256 of the v0.1.0-cac installer: `B8C3F2A7535A7BC96BB76727676BE504DF6F0D681D239D6CAAD567CBA276421B`
+SHA-256 of the v0.1.0-cac installer: `0C635CF4B80A8331FD1AD56F1CDBF1E749E9F5770C4EF8F5F0ABB5B4EB1C4EEA`
 
 There is **no demo mode** in the product. Each person supplies their own account or model. Lalime does not supply shared credentials or pay for model usage. API billing can be separate from a provider's chat subscription.
 

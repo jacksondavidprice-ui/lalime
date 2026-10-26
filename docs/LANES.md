@@ -3528,3 +3528,354 @@ No readable ship-check skill or repository lint/format script is available. Repo
 C changed the one requested test timeout, extended the live QA script, added the compiled startup QA script/config, and updated LANES/readiness and scratch evidence only. No production logic or shared types changed. No commits, pushes, releases, uploads, deployments, or changes to Jackson-only files occurred. Handoff ends the frozen integration interval.
 
 HANDOFF to Codex A/B
+
+## Batch 12 -- Codex B renderer ownership and coordination
+
+Batch 12 defaults, Jackson may overrule:
+- D1: recovery paths stay behind Show details; main text names Lalime's recovery
+  folder, with Open folder when the host provides that capability.
+- D2: Undo remains disabled while approval waits, with a visible and accessible
+  explanation. No change to approval or execution policy.
+- D3: partial Undo shows partial results and per-item reasons only. No suggested
+  or automatic renamed restoration.
+
+B owns src/ and browser scripts only, plus this required record. A: please post
+structured Undo result and open-recovery-folder bridge names here. B will use
+failed + counts and remove the unsupported partly_restored renderer status.
+For old snapshots without structured fields, B will show a short generic result
+and keep the unparsed legacy reason in Show details, avoiding raw path leakage.
+Do not alter Jackson-only changes already present in the worktree.
+
+## Batch 12 - Lane A/B contract and defaults
+
+Batch 12 defaults, Jackson may overrule:
+D1: Main UI wording uses "Kept in Lalime's recovery folder"; raw recovery paths
+belong only in Show details or a tooltip. Open folder opens the fixed app
+quarantine directory, never a renderer-selected path.
+D2: Undo stays disabled while an approval waits; show the short explanation.
+D3: Partial Undo shows its partial message and per-item reasons only. No
+restore-as-name-(2) action is added or offered.
+
+Confirmed host contract for B (implemented and unit tested):
+`undoResult` retains status `restored` or `failed`, existing reason/counts,
+and adds optional `items: Array<{ name: string; reason: string; recoveryPath?: string }>`
+and `warning?: string`. name is a basename; reason is plain text without raw
+recovery paths. recoveryPath is details-only. Items describe incomplete file
+restores. Full existing reason remains available for details. If all files
+came back but recovery-list persistence failed, status is restored and warning
+explains that persistence problem; do not label the file restoration failed.
+The new optional preload API is `openRecoveryFolder(): Promise<{ok:boolean;
+message?:string}>`; it accepts no path. B can feature-detect it for old bridges.
+No snapshot status named partly_restored is added: use failed plus counts for
+strict partial restoration. No Guardian tier or taint policy changes.
+
+### Batch 12 - A finished host changes and evidence
+
+- `electron/main/live-agent.ts`: reserve approval order when a request arrives,
+  before asynchronous command checks. Do not display a later ready card while
+  an earlier review is pending. A blocked earlier request releases the next
+  card; Stop clears both prepared cards and order state. Normal enqueue uses
+  a tracked maximum order, without copying all queue keys. The service hold
+  now precedes the later settings card. No harness assertion was changed.
+- `hands/src/node-hands.ts`, `hands/src/types.ts`: return structured Undo item
+  issues, a separate recovery-list warning, and explicit no-op states. Include
+  recoveryPath only when the remaining entry exists at report time. If all
+  files returned, a manifest error gives ok:true with restoreWarning. Metadata
+  can be retried internally without restoring the files again. A later pending
+  folder move gives the folder-first instruction; no automatic extra restore
+  occurs. Check quarantine cleanup permissions before restoring an item.
+- `electron/main/session.ts`, `shared/types.ts`: expose the item and warning
+  fields above. Writer UNDO_FAILED hints use the first basename and plain
+  reason, plus the number of other issues. Long recovery paths do not consume
+  that hint. Unusually long names or reasons use a path-free fallback instead
+  of cutting a path. Successful file restoration stays restored in snapshots,
+  model notices, and writer facts, with UNDO_WARNING for the metadata problem.
+  Already-restored and in-progress responses do not overwrite the Undo result.
+- `electron/main/recovery-folder.ts`, `electron/main/ipc.ts`,
+  `electron/preload/index.ts`, `shared/ipc.ts`: add the optional zero-argument
+  openRecoveryFolder method. The channel is lalime:openRecoveryFolder. It keeps
+  sender/main-frame checks, rejects arguments, and validates the fixed default
+  NodeHands quarantine directory before shell.openPath. App-folder links,
+  canonical redirects, regular files, and missing directories are refused.
+  No renderer-supplied path is accepted. Launch errors return plain messages.
+
+Tests and red evidence:
+- `tests/live-agent-approval-fifo.test.ts`: command
+  `node node_modules/vitest/vitest.mjs run tests/live-agent-approval-fifo.test.ts`
+  first exited 1 with four failures, then exited 0 with all four passing.
+  Covers the actual service hold/settings order, delayed review, blocked
+  review, and Stop. Frozen test and logs: scratch/qa-evidence/batch12-fifo-*.
+- `tests/session-undo-context.test.ts`: the same direct Vitest command with
+  that path first exited 1 with four new failures and 27 passes. After the
+  fix, the combined Session/FIFO run passed all 35 tests. Frozen red test and
+  logs: scratch/qa-evidence/batch12-session-red.* and batch12-host-green.log.
+- `tests/node-hands-batch12-undo.test.ts`: direct Vitest run first exited 1
+  with six failures and one platform skip. Review added two failing cases for
+  a missing recovery copy and a misleading generic metadata warning. Final
+  run passed eight tests, with one POSIX chmod test skipped on Windows. The
+  same accepted tests passed after each fix. Nearby Hands tests passed 80
+  tests, with four POSIX skips. Frozen tests, commands, and logs are recorded
+  in scratch/qa-evidence/batch12-hands-notes.txt and its referenced files.
+  Deterministic EACCES and mode-bit checks ran on Windows; actual POSIX
+  permissions and Windows native ACL behavior are not claimed as verified.
+- `tests/node-hands-undo-reporting.test.ts` and
+  `tests/hands-batch8-honesty.test.ts`: update only the old manifest-only
+  failure expectations to restored plus warning. Keep file, retry, and
+  manifest assertions.
+- `tests/recovery-folder.test.ts`: 15 initial failures proved the missing
+  IPC/preload capability. The same 15 tests now pass, including sender checks,
+  arguments, links, missing folders, and launch errors. The nearby IPC suite
+  also passed. Explorer launch is mocked; filesystem link fixtures are real.
+  The accepted test copy and transcribed command/exit evidence are in
+  scratch/qa-evidence/batch12-recovery-accepted.test.ts and
+  batch12-recovery-evidence.txt. Full focused-run stdout was retained only in
+  the tool transcript; the integrated full-suite log is saved separately.
+
+Final host verification:
+- `npm run typecheck`: exit 0.
+- `node node_modules/vitest/vitest.mjs run --maxWorkers=6`: exit 0;
+  84 files, 763 passed, 4 platform skips. Evidence:
+  scratch/qa-evidence/batch12-typecheck.log and batch12-vitest.log.
+- `node node_modules/typescript/bin/tsc -p tsconfig.electron.json --outDir artifacts/codex-a-batch12/dist-electron`:
+  exit 0. The exported buildPreload function also passed with outDir set to
+  artifacts/codex-a-batch12/dist-electron/electron/preload. Shared build output
+  was not rebuilt by A.
+- `git -c core.safecrlf=false diff --check`: exit 0. Independent read-only
+  review found no further blocker in FIFO, Session Undo, or recovery-folder
+  handling. No readable ship-check skill or repository lint/format command
+  was available; repository checks ran directly.
+
+B: the contract above is final for this batch. C: rerun the real Electron
+service-hold contract and the normal-terminal native/installer gates. These
+runtime gates were not run by A. Filesystem validation and shell.openPath
+cannot atomically exclude another process replacing a directory after the
+check. Recovery paths describe report-time state. No cross-session recovery
+UI, renamed restore, Guardian policy, protected file, renderer, or harness
+change was made by A. Existing changes by other lanes were preserved.
+
+HANDOFF to Codex C
+
+### Batch 12 -- B finished renderer items and red evidence
+
+- `src/components/ChangeSummary.tsx`: primary Undo alerts now show one count
+  line and structured item basenames/reasons. Legacy reason, warning diagnostics
+  and recoveryPath stay in a keyboard-accessible, scrollable Show details
+  disclosure. Text uses visible escapes; no HTML rendering. Old snapshots get
+  a short generic failure or counted partial result, with full legacy details.
+- The optional Open folder button calls `openRecoveryFolder()` with zero
+  arguments and only appears with retained-copy metadata and bridge support.
+  Failure gives a plain retry message without host diagnostics. Restored files
+  with a persistence warning remain restored, with a separate calm status.
+- Undo and Undo all stay disabled during pending consent. Both reference the
+  visible explanation through aria-describedby. No policy or tier changed.
+- Removed the unsupported partly_restored status and its cast. The UI uses
+  the actual failed + counts contract. Removed its now-unused copy key.
+- Copy changes: `src/copy/en.json`, `src/copy/source.json`. New browser checks:
+  `scripts/ui-undo-details.ts`, `scripts/ui-undo-accessibility.ts`.
+
+Red before related production edits:
+- `node scripts/ui-undo-accessibility.ts`: 2 failed, 2 existing behavior checks
+  passed. Missing visible hint and missing description references. After D2:
+  same four tests passed (`artifacts/ui-batch12-undo-accessibility-red.txt`,
+  `artifacts/ui-batch12-undo-accessibility-d2-green.txt`). The raw tab summary
+  check and connected focus transition were passing characterizations.
+- `node scripts/ui-undo-details.ts`: legacy red 2 failed / 1 passed; structured
+  red 6 failed / 1 passed; structured green 7 passed. Evidence with exact source
+  and commands: `artifacts/ui-batch12-details-legacy-red.txt`,
+  `ui-batch12-details-structured-red.txt`, `ui-batch12-details-structured-green.txt`.
+- Independent review found a delayed folder-launch result could attach its
+  failure to a newer successful Undo. Added a deferred-response check: 1 failed,
+  7 passed before the fix. Scoped requests to a result-lifetime token and ignore
+  completion after replacement/unmount. Same eight checks passed. Evidence:
+  `artifacts/ui-batch12-details-race-red.txt`, `ui-batch12-details-race-green.txt`.
+
+Test contract reconciliation: `src/tests/ui-undo-withdrawal.ts` now uses failed
+plus counts instead of the nonexistent partly_restored snapshot status. Old
+expectations that legacy reason text appeared in the primary alert now expect
+its short result line; the new details suite verifies exact reason preservation
+behind disclosure. The same-entry focus test's expected text was changed for
+this new D1 location; connected-node, role, focus and exact action-call checks
+remain. No focus or safety assertion was removed. Source Undo suite passed all
+21 synthetic checks after this reconciliation; production includes the extra
+real-host fixture. Mobile recovery screenshot was inspected:
+`artifacts/screenshots/batch12-partial-undo.png`.
+
+### Batch 12 -- B final checks and handoff
+
+Final source checks:
+- `npm run typecheck`: exit 0 (`artifacts/ui-batch12-typecheck-final.txt`).
+- `node node_modules/vitest/vitest.mjs run --maxWorkers=6`: exit 0; 84 files,
+  763 passed, 4 skipped (`artifacts/ui-batch12-vitest-final.txt`).
+- `node node_modules/vite/bin/vite.js build --outDir artifacts/ui-batch12-final-build`:
+  exit 0 (`artifacts/ui-batch12-final-build.txt`).
+- `git diff --check -- src scripts/ui-*.ts docs/LANES.md`: exit 0.
+- Read-only review confirmed the result-lifetime token fixes its finding.
+
+Browser verification uses Edge through direct Node 24 scripts, with
+LALIME_BROWSER_CHANNEL=msedge. Full suite first ran on isolated build
+artifacts/ui-batch12-build at http://127.0.0.1:43126. After the async guard,
+all affected Undo/activity/recap suites reran on the final isolated build at
+http://127.0.0.1:43135. Port 43127 was occupied; B left its owner alone.
+
+| Command | Latest passed | Exit | Build |
+| --- | ---: | ---: | --- |
+| node scripts/ui-smoke.ts | 12 | 0 | initial |
+| node scripts/ui-chat-regressions.ts | 6 | 0 | initial |
+| node scripts/ui-trust-regressions.ts | 138 | 0 | initial |
+| node scripts/ui-activity-regressions.ts | 23 | 0 | final |
+| node scripts/ui-boot-regressions.ts | 3 | 0 | initial |
+| node scripts/ui-chat-wow.ts | 29 | 0 | initial |
+| node src/tests/ui-undo-withdrawal.ts | 22 | 0 | final |
+| node src/tests/ui-readable-text.ts | 8 | 0 | initial |
+| node src/tests/ui-first-use.ts | 8 | 0 | final |
+| node scripts/ui-undo-details.ts | 8 | 0 | final |
+| node scripts/ui-undo-accessibility.ts | 4 | 0 | final |
+
+Latest production checks total 261 passed. Source-only
+`node scripts/ui-demo-approval-regressions.ts` on port 43125 adds 5 passed:
+266 browser checks, zero failures in their latest runs. The Undo suite includes
+LALIME_HOST_WITHDRAWAL_EVIDENCE=scratch/qa-batch8/withdrawal-visibility-snapshots.json.
+Other evidence environment: LALIME_EVIDENCE=batch12-production / batch12-final.
+Logs: `artifacts/ui-batch12-ui-*.log`, `artifacts/ui-batch12-final-ui-*.log`,
+`artifacts/ui-batch12-browser-exits.txt`,
+`artifacts/ui-batch12-final-browser-exits.txt`, `artifacts/ui-batch12-demo.log`.
+
+The first full run correctly caught two older activity assertions expecting
+legacy diagnostics in the primary line. `scripts/ui-activity-regressions.ts`
+now checks the generic alert, opens Show details, and verifies the exact old
+reason. The no-celebration and sequential-retry assertions remain. The first
+build also failed the newly added deferred-response test because it preceded
+the async guard. Both are preserved in initial logs and pass on the final build.
+No remaining failure in the requested browser suites.
+
+C integration note: `scripts/qa-live-session-renderer.test.ts` around line 161
+still waits for the entire legacy output inside role=alert. Under D1, assert
+the short alert, open Show details, then assert the original output there.
+Keep its real-host/provider/recovery checks. This QA script is outside B's
+src/ and scripts/ui-*.ts lane, so B did not edit or run that integration suite.
+The partial-result check around line 314 uses textContent and includes hidden
+legacy details; C can strengthen it by explicitly opening the disclosure.
+
+No readable ship-check skill or lint/format script is available. Repository
+checks ran directly. Npm/tsx wrappers were not rerun; the established direct
+Node/Edge path executed the same browser suites. Native, Electron and installer
+gates remain with the overseer/C as requested. No native build, shared dist
+build, packaging, git commit/push or protected-file edit. No policy changes.
+B's three owned source/preview servers were stopped after verification.
+
+HANDOFF to Codex C
+
+## Batch 12 integration (C)
+
+October 25, 2026. C tested the current A/B working tree in `artifacts/codex-c-batch12/`, with production preview on 43138 and source preview on 43139. Ports 43123 and 43127 were not used. No packaging, native build, commits, pushes, policy edits, or manual file deletions were performed.
+
+### Integration change and evidence
+
+C changed only `scripts/qa-live-session-renderer.test.ts` and this coordination record, plus generated scratch/build evidence. The live script now imports the isolated batch 12 host/preload and writes to `scratch/qa-batch12/`.
+
+Before reconciliation, the unchanged legacy-alert expectation failed in two of four live cases: both waited for the complete diagnostic in role=alert. Evidence: `scratch/qa-batch12/live-red.log`, exit 1, 2 passed / 2 failed, with the prior script saved as `live-before.test.ts`. This is the intended D1 presentation change, not a product failure.
+
+The updated cases assert the concise primary failure, confirm details are initially hidden, open Show details, and check the exact original diagnostic. The real NodeHands partial case additionally checks structured basename metadata, absence of document/recovery paths in the primary alert, the Open folder control, and complete diagnostics after disclosure. Existing host/provider/writer/file/manifest assertions remain intact.
+
+Exact command: `node node_modules/vitest/vitest.mjs run --config scratch/qa-batch9/live-vitest.config.ts`, with `LALIME_URL=http://127.0.0.1:43138`. Result: 4 passed, exit 0. Evidence: `live-green.log`, regenerated live session/writer/NodeHands JSON, and screenshots under `scratch/qa-batch12/`. C inspected `live-node-partial.png`: concise partial count, basename/reason, recovery-folder wording, Open folder, and explicit expanded details are visible.
+
+No shared-type glue was missing. Hands item issues and recovery warnings reach SessionController, shared ActivityEntry, IPC/preload, and the renderer. Snapshot partial restoration uses failed plus counts. The model's JSON outcome named partly_restored remains separate from the removed unsupported renderer snapshot status.
+
+### Independent review
+
+- FIFO: no deadlock or ordering regression found. Reservation cleanup runs in dispatch finally, and Stop clears order state. Additional cases prove earlier precheck rejection, earlier malformed tool arguments, Stop followed by a fresh task before the old review settles, and three reviews finishing in reverse order. Command: `node node_modules/vitest/vitest.mjs run --config scratch/qa-batch12/fifo-review.config.ts`. Result: 8 passed, exit 0; four existing cases plus four additional cases. Evidence: `fifo-review.log` and the retained scratch test/config.
+- Recovery folder: IPC validates the sender/main frame and rejects arguments. Preload sends zero arguments. The target is the fixed default NodeHands quarantine, not a renderer-selected path. Real filesystem tests reject links, canonical redirects, regular files, and missing directories. Explorer launch is mocked. The validation/open sequence cannot atomically exclude an external process replacing a directory after validation; no stronger claim is made.
+- Undo: restored-with-warning stays restored in snapshots/model/writer facts; metadata warnings use UNDO_WARNING. Folder-first recovery and retry are covered by real filesystem fixtures. Structured items and details are escaped. Renderer request tokens prevent stale folder-open results from attaching to a newer Undo; focus checks protect a draft.
+- Focused command: `node node_modules/vitest/vitest.mjs run tests/recovery-folder.test.ts tests/node-hands-batch12-undo.test.ts tests/session-undo-context.test.ts --maxWorkers=3`. Result: 54 passed, 1 POSIX skip, 3 files, exit 0. This overlaps the full unit suite; it is not an additional unique-test total.
+
+### Build and required checks
+
+```powershell
+npm run typecheck
+node node_modules/typescript/bin/tsc -p tsconfig.node.json
+node node_modules/vite/bin/vite.js build --outDir artifacts/codex-c-batch12/dist
+node node_modules/typescript/bin/tsc -p tsconfig.electron.json --outDir artifacts/codex-c-batch12/dist-electron
+node node_modules/vitest/vitest.mjs run --maxWorkers=6
+git -c core.safecrlf=false diff --check
+```
+
+All commands exit 0. Vitest: 763 passed, 4 platform skips, 84 files. Logs: `scratch/qa-batch12/typecheck.log`, `build.log`, `vitest.log`, `diff-check.log`. Syntax validation `node --check scripts/qa-live-session-renderer.test.ts` also exits 0. No readable ship-check skill or repository lint/format command is available.
+
+Isolated preload and runtime assets were built with this Node ESM input, exit 0:
+
+```javascript
+import fs from 'node:fs';
+import {buildPreload} from './scripts/build-preload.mjs';
+await buildPreload({outDir:'artifacts/codex-c-batch12/dist-electron/electron/preload'});
+fs.cpSync('writer/prompts','artifacts/codex-c-batch12/dist-electron/writer/prompts',{recursive:true});
+fs.copyFileSync('package.json','artifacts/codex-c-batch12/package.json');
+fs.mkdirSync('artifacts/codex-c-batch12/build',{recursive:true});
+fs.copyFileSync('build/icon.png','artifacts/codex-c-batch12/build/icon.png');
+```
+
+### Browser gate
+
+All discovered browser suites in `scripts/ui-*.ts` and `src/tests/ui-*.ts` ran against the fresh isolated build or the source-only bridge server. All exit 0: 261 production checks plus 5 source-only checks, 266 total, zero failures.
+
+Production server command:
+
+```powershell
+node node_modules/vite/bin/vite.js preview --outDir artifacts/codex-c-batch12/dist --host 127.0.0.1 --port 43138 --strictPort
+```
+
+Test environment:
+
+```powershell
+$env:LALIME_URL='http://127.0.0.1:43138'
+$env:LALIME_BROWSER_CHANNEL='msedge'
+$env:LALIME_EVIDENCE='batch12-c-production'
+$env:LALIME_HOST_WITHDRAWAL_EVIDENCE='scratch/qa-batch8/withdrawal-visibility-snapshots.json'
+```
+
+| Exact command | Passed |
+| --- | ---: |
+| `node scripts/ui-smoke.ts` | 12 |
+| `node scripts/ui-chat-regressions.ts` | 6 |
+| `node scripts/ui-boot-regressions.ts` | 3 |
+| `node scripts/ui-chat-wow.ts` | 29 |
+| `node scripts/ui-activity-regressions.ts` | 23 |
+| `node scripts/ui-trust-regressions.ts` | 138 |
+| `node src/tests/ui-undo-withdrawal.ts` | 22 |
+| `node src/tests/ui-readable-text.ts` | 8 |
+| `node src/tests/ui-first-use.ts` | 8 |
+| `node scripts/ui-undo-details.ts` | 8 |
+| `node scripts/ui-undo-accessibility.ts` | 4 |
+
+Source-only bridge suite:
+
+```powershell
+node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 43139 --strictPort
+# Separate test terminal:
+$env:LALIME_URL='http://127.0.0.1:43139'
+node scripts/ui-demo-approval-regressions.ts
+```
+
+Result: 5 passed, exit 0. Direct Node 24.13.0 plus Edge avoids the established npm/tsx passwd failure. Logs are named after each script under `scratch/qa-batch12/`; counts and exits are in `browser-counts.json`, `browser-exits.txt`, and `extra-exits.txt`. Both owned preview servers were stopped after checks.
+
+### Overseer work outside the sandbox
+
+C did not run native, actual Electron, or installer commands in this batch. The overseer's earlier native success and four Electron checks are reported context, not C verification of the final tree. In a normal terminal, rerun the fresh build and full real Electron contract script; the decisive case is service-hold/settings FIFO order, followed by every remaining contract:
+
+```powershell
+npm run build
+if ($LASTEXITCODE -ne 0) { throw 'Fresh JS/native build failed' }
+node scripts/qa-hands-native.mjs
+if ($LASTEXITCODE -ne 0) { throw 'Native helper gate failed' }
+node scripts/qa-electron-contracts.mjs --app-root=. --evidence-dir=scratch/qa-batch12/outside-contracts
+if ($LASTEXITCODE -ne 0) { throw 'Real Electron contract gate failed' }
+```
+
+Installer work remains with the overseer under separate authorization after the desktop gate passes. Preserve older release folders. Run packaged native/mock-provider/contracts checks and a clean-machine install check before treating a future installer as verified. No installer was built by C, per the batch rule.
+
+### Result and scope
+
+No blocking A/B bug or contract mismatch remains in the tested sandbox scope. No production code or public type edit was needed. The requested live QA reconciliation is complete. All eight protected source/document hashes match `scratch/qa-batch12/protected-before-c.json`; comparison is `protected-after-c.json`. Existing protected-file edits from other work were preserved. C did not touch the demo video. No commits, pushes, packaging, policy changes, or manual file deletions occurred.
+
+This is a green local integration/review gate, not a claim that the final native desktop or installer gate passed. Actual Electron execution, native helper rebuild/test on the final tree, Explorer launch, and any installer verification remain with the overseer.
+
+GATE GREEN

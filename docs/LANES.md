@@ -3879,3 +3879,1022 @@ No blocking A/B bug or contract mismatch remains in the tested sandbox scope. No
 This is a green local integration/review gate, not a claim that the final native desktop or installer gate passed. Actual Electron execution, native helper rebuild/test on the final tree, Explorer launch, and any installer verification remain with the overseer.
 
 GATE GREEN
+
+## Claude E -- session-side harness fixes (Sun Oct 25, 23:59 CT)
+
+Jackson asked Claude E to finish the 7 session-side harness issues listed under "(Claude → Astra)".
+Already fixed by others before this pass: 1 (error sets running:false, so the writer no longer
+posts "Done."), 4 (StoppedCard), 5 (scoped task grants), 7 (session passes `instructions: undefined`).
+Claude E is now editing, minimally, in A's files: `electron/main/session.ts` (`messageDone` status,
+`blocked` duplicate chat message), `electron/main/api-agent-client.ts` (tool limit → final summary
+with no tools instead of a failed turn), `electron/main/live-agent.ts` (limit message wording only),
+`shared/settings.ts` (`maxToolCalls` default 12 → 25) and the matching tests. No Guardian or policy
+changes. Please hold edits to these four files until the follow-up note below says done.
+
+## Batch 13 -- Codex B renderer ownership and connection contract
+
+B owns ProviderSettings, chat header, renderer connection presentation and browser
+checks. B will remove the maxToolCalls control and exclude it from settings
+updates, while tolerating the old host field. No edits to Claude E's five files,
+host code, shared/settings, protected files or policy.
+
+A: please post shared/connection.ts export name, AppSnapshot property and retry
+method when ready. B needs checking/ready/failed with optional account/plan,
+model and reason. Only an explicit ready signal may show Ready. An old host
+with signed-in auth alone will say Checking / verification unavailable.
+Repair examples will close settings and fill an editable composer, never send.
+
+## Claude E -- session-side harness fixes DONE (Mon Oct 26, 00:08 CT)
+
+The four files are released. Changes:
+- `session.ts`: `messageDone` no longer sets "Preparing a clear reply…" mid-turn (live-agent's
+  narration status shows instead). `blocked` sets only `blockedNotice` + status, with no duplicate
+  chat message. If a blocked turn ends with no model text, the reply is the block's plainEnglish.
+- `api-agent-client.ts`: default limit 25. At the limit the extra calls are not run; the client
+  adds a host note and makes one more request with `tool_choice: "none"` for a two-or-three-sentence
+  summary ("say keep going"). The turn completes normally. If that summary has no text, the old
+  "Tool call limit reached" failure remains.
+- `live-agent.ts`: the Codex-path limit error now tells the model to stop and summarize.
+- `shared/settings.ts`: `maxToolCalls` default 25. `settings-store.ts` moves a saved 12 (old default)
+  to 25, since B batch 13 removes the control.
+- Tests: `api-agent-client` (summary path, empty-summary failure), `session-lifecycle` (no duplicate
+  block message, narration status kept, blocked fallback reply), `session-settings` (default 25,
+  migration). Typecheck clean; vitest 84 files / 766 pass, 4 skipped. No Guardian, policy,
+  protected-file or renderer edits. Nothing committed.
+
+## Batch 13 - Lane A host repair audit and connection contract (in progress)
+
+B contract, available now: import type ConnectionCheck from shared/connection.ts.
+Shape: { state: "checking" | "ready" | "failed", model: string, account?: string,
+plan?: string, reason?: string }. The discriminated type requires reason only
+for failed. Account and plan are optional provider-reported display labels;
+do not infer them. Ready means the tiny model request succeeded, not just that
+sign-in completed. No key, token, or raw provider diagnostic belongs in these
+fields. Session snapshot/event and the actual test request are deferred to the
+next turn, as requested. Do not show ready based on this type alone.
+
+A will not edit Claude E's five reserved files this turn, even if a done note
+appears during this turn. The live repair execution hook is also in that set:
+live-agent.ts has no dynamic PowerShell tool and never invokes Hands.runPowerShell.
+Codex's native shell is disabled and its sandbox stays read-only. A Hands-only
+UAC addition would not make live repairs available. This integration constraint
+must stay visible in the capability table and final handoff.
+
+### Repair capability (Batch 13)
+
+Verified source audit: the live model receives exactly eight tools from
+`electron/main/agent-prompt.ts`: lalime_update_plan, lalime_screenshot,
+lalime_list_windows, lalime_list_ui, lalime_click, lalime_type,
+lalime_open_settings, and lalime_recycle. There is no live command, file-list,
+file-read, or system-information tool. API providers receive these same tools.
+Typing sets the focused UI Automation value; it is not a keyboard shortcut
+or a shell tool. The native helper lists at most 40 windows and 80 UI elements.
+
+`electron/main/codex-client.ts` remains unchanged: thread/start requests
+sandbox read-only and approvalPolicy untrusted, disables shell/apps/browser
+features and web search, and turn/start repeats readOnly. The native command
+approval handler in live-agent.ts runs Hands precheck and Guardian but then
+returns accept to Codex. It does not call Hands.runPowerShell. The existing
+Session Wi-Fi demo does call Hands, but that is not a live model capability.
+Do not enable Codex's native shell to supply the missing repair tool.
+
+Table terms: "works now" means the route exists in source and the mocked Hands
+approval test passes; it does not mean a real Windows repair was performed.
+"With UAC" describes the missing command implementation, not an available
+Lalime feature. No new UAC executor was implemented in this turn.
+
+| Repair | Works now | Works with UAC | Still blocked or incomplete; reason |
+| --- | --- | --- | --- |
+| Display, sound, network and other Settings | Open validated Settings pages, inspect controls, approve individual clicks/types | Windows may ask the user for elevation for a selected operation | Opening a page alone is not proof that a change worked; UI availability varies |
+| Startup apps | Open ms-settings:startupapps and use available controls | No Lalime command broker exists | Registry-based startup edits lack a live command tool |
+| Uninstall / app repair | Open ms-settings:appsfeatures and use available controls | User can answer an OS-owned UAC prompt; Lalime does not answer it | Command uninstall is not exposed; availability depends on the app |
+| Temp/cache and disk cleanup | Open ms-settings:storagesense or storagepolicies; recycle selected allowed-folder children | No command elevation support | Direct recycle outside the six Windows known folders is refused; do not use a shell to bypass that policy |
+| Printer / spooler | Open ms-settings:printers or troubleshoot | No Lalime command broker exists for service repairs | Start/Stop-Service Spooler are tier 3 ask_hold; Restart-Service Spooler is currently tier 2 ask. All lack a live command route |
+| DNS and network reset | Open network-status and network-wifi; use available controls | Administrative command execution is not implemented | ipconfig /flushdns and netsh winsock reset evaluate to tier 2 ask; netsh int ip reset also gets default tier 2. An approval is not elevation |
+| Other service restart/reset | Existing visible UI only, where available | One approved elevated command still needs implementation | Same live tool and UAC gaps; Guardian's actual rules remain authoritative |
+| SFC / DISM repair | No live command route | Required elevated execution is not implemented | Native 20-second execution limit is unsuitable for long scans. Guardian currently gives the tested commands tier 2 ask |
+| Windows Update troubleshooting | Open windowsupdate or troubleshoot | No elevated repair executor | Stop-Service wuauserv is explicitly tier 4 blocked by never.defender.disable; a command tool would not override it |
+| Driver/device information | Inspect information available in existing windows/Settings | No command broker; privilege need depends on operation | Get-PnpDevice has no live route even though its tested Guardian outcome is tier 2 ask |
+| Registry reads / targeted HKCU writes | No registry tool | HKCU does not inherently require elevation for every write; no live command executor exists either way | Tested reg query is tier 2 ask; Set-ItemProperty HKCU is tier 3 ask_hold. No generic registry backup implementation exists |
+| System32 wipe, boot changes, disabled protections | Not available | UAC must never override a block | Existing never-list/platform limits apply; unchanged |
+
+Settings URI descriptions were checked against Microsoft's documented routes:
+https://learn.microsoft.com/en-us/windows/apps/develop/launch/launch-settings.
+SFC/DISM and network-reset privilege requirements are documented at
+https://support.microsoft.com/en-us/windows/experience/backup-recovery/using-system-file-checker-in-windows
+and https://learn.microsoft.com/en-us/troubleshoot/windows-server/networking/reset-tcp-ip-net-shell.
+These documents do not establish that Lalime executed those operations.
+
+### Hands execution and scope audit
+
+- WindowsHandsBridge starts Hands.exe --stdio at the app's privilege level.
+  powershell.run uses a separate native worker. Program.cs repeats AstCheck
+  before launch and execution, then runs powershell.exe -NoProfile
+  -NonInteractive -Command. Command timeout is 20 seconds, worker timeout is
+  25 seconds, and the TypeScript request timeout is 30 seconds. Native jobs
+  contain children; Stop kills the sidecar. The bridge timeout alone does not
+  establish that a command stopped. Completed command changes have no generic
+  automatic Undo.
+- The runtime AstCheck is a regex/string precheck for encoded and
+  download-and-run patterns. PowerShellAstGuard.cs is a commented design
+  sketch, not an active AST parser. Neither file was edited. Do not describe
+  the current helper as a complete AST sandbox.
+- No UAC broker or RunAs flow exists. Elevating the persistent app/sidecar would
+  violate the one-approved-command requirement. Native redirected stdio cannot
+  simply be reused for a shell-elevated launch. A separate authenticated local
+  transport or a carefully validated one-request handoff is needed, with
+  exact command binding, output, UAC denial handling, cancellation, and exit.
+  A plain elevated PowerShell fallback would discard native checks/containment.
+- NodeHands on Windows uses a 60-second execFile timeout, 2 MB output buffer,
+  and an 8000-character result cap. Its Stop does not cancel an in-flight
+  execFile. It is not a suitable elevation fallback. On other platforms it
+  records PowerShell intent without executing it; that is not a repair.
+- Windows recycle resolves the six OS known folders (Documents, Downloads,
+  Desktop, Pictures, Videos, Music), intersects them with
+  ALLOWED_MUTATION_ROOTS, checks lexical and canonical descendants, refuses
+  roots/traversal/outside targets, deduplicates, and rechecks each move.
+  Although the policy array also contains lalime, this bridge resolves only
+  the six named OS folders. shell.trashItem has no permanent-delete fallback;
+  restore is manual through the Windows Recycle Bin.
+
+### For Jackson / next authorized host turn
+
+1. Repair execution is not finished. The missing live-tool handler and its
+   approval/execution wiring require live-agent.ts, explicitly reserved to
+   Claude E this turn. Add a Guardian-gated Hands command tool there after
+   ownership is released. Keep the native Codex shell disabled/read-only;
+   do not route the approved repair back to Codex. Bind the displayed command,
+   cwd, elevation choice, and execution to the same approved action. Preserve
+   holds, provenance, Stop, activity evidence, and no grant reuse for holds.
+2. Implement and test a one-request UAC executor and long-running repair
+   lifecycle as part of that live slice. Keep the app and normal sidecar
+   unelevated. Retain native prechecks and process containment. Do not report
+   cancellation until execution has actually stopped, or report it uncertain.
+   This batch adds no detached elevated process or unconnected executor.
+3. Guardian policy questions only: Restart-Service lacks the service hold
+   pattern; netsh int ip reset lacks the network reset explanation; the registry
+   template promises a backup but generic command execution makes none.
+   Recycling outside the six folders, stopping wuauserv, broader cleanup, and
+   changes to these tiers/rules require Jackson's policy decision. No rules
+   were changed here. The policy probe is a classification, not permission
+   to execute a repair or evidence of backup/Undo support.
+4. Per-turn tool cap removal is deferred per this turn's ownership instruction.
+   Claude E's proposed default of 25 does not implement Jackson's newer no-cap
+   direction. Current RepeatGuard and other operational limits are separately
+   documented; no cap or settings change was made by A.
+5. Wire ConnectionCheck in the next turn. A successful auth response alone
+   must not set ready. Run a tiny tool-free model check for the selected model,
+   discard stale results after account/model changes, and emit a plain failure
+   reason without credentials or raw provider diagnostics. No smoke call was
+   added or represented as working in this turn.
+
+### Batch 13 implementation and test evidence (A)
+
+Changed files: shared/connection.ts (the new type), electron/main/agent-prompt.ts
+(repair Settings discovery and honest capability wording),
+tests/batch13-repair-routes.test.ts (17 checks), and this LANES record.
+No Hands execution, Guardian policy, Codex sandbox, reserved Claude E file,
+renderer, native C#, or harness change was made by A.
+
+Red command: node node_modules/vitest/vitest.mjs run tests/batch13-repair-routes.test.ts
+exited 1 with 7 failures / 10 passes before the prompt change. Six missing
+Settings route descriptions and missing repair/UAC honesty instructions failed;
+all eight existing Guardian-to-Hands route checks already passed. Frozen test:
+scratch/qa-batch13/repair-routes-red.test.ts; log: repair-routes-red.log.
+The exact command after the fix exited 0 with 17 passed (green-exact.log).
+With tests/agent-prompt.test.ts, all 26 passed (repair-routes-green.log).
+The tests mock Hands and prove no call before consent; they do not execute
+Windows repairs. No accepted assertion was changed during green.
+
+The read-only policy probe evaluated 16 literal command strings using the
+existing deterministic evaluator, with no reviewer/grant/taint/path additions.
+Results: scratch/qa-batch13/guardian-probe-results.json. It executed no command
+payloads. The tsx runner failed with uv_os_get_passwd; an isolated esbuild
+bundle plus Node succeeded. Source hashes and run notes are beside the probe.
+
+The 00:08 shared typecheck saw B's active ConnectionPanel translation keys
+not yet present and an unused ProviderSettings import. A did not edit them.
+The isolated host build passed. Full Vitest passed: 783 tests, 4 platform
+skips, 85 files. Final typecheck/review result follows below.
+
+### Batch 13 final host check and handoff
+
+- npm run typecheck: final exit 0. B's transient renderer type errors are gone.
+  Evidence: scratch/qa-batch13/typecheck-final.log.
+- node node_modules/vitest/vitest.mjs run --maxWorkers=6: exit 0, 783 passed,
+  4 platform skips, 85 files. Evidence: scratch/qa-batch13/vitest.log.
+- node node_modules/typescript/bin/tsc -p tsconfig.electron.json --outDir artifacts/codex-a-batch13/dist-electron:
+  exit 0. Evidence: scratch/qa-batch13/host-build.log. No shared build output.
+- Scoped git diff --check for A's changed files: exit 0. The whole-worktree
+  check found trailing whitespace in B's in-progress src/pages/ChatHome.tsx
+  at line 155; A did not change renderer files. B/C should clear and recheck it.
+- Independent read-only review found no blocker in the changed prompt,
+  ConnectionCheck type, or 17 route tests. It confirmed the tests establish
+  approved Settings navigation, not native repair success or UAC capability.
+- No installed readable ship-check skill or repository lint/format script was
+  found. Repository-native checks ran directly. Browser checks for B's new UI
+  and the final concurrent tree remain with B/C; no native, UAC, real repair,
+  packaging, or credential-based model calls were run by A.
+
+Completed: precise source/policy audit, Settings repair discovery with consent
+characterization, and the new connection type for B. Incomplete: live command
+repair execution and one-command elevation. These require the reserved host
+handler plus a verified native elevation lifecycle, as detailed above. The
+connection request/wiring and cap removal remain deferred as instructed.
+
+HANDOFF to Codex C
+
+## Batch 13 turn 2 - A active contracts for B
+
+Ownership: A edits Session/IPC/shared snapshot and connection helper. Host worker
+owns live-agent/agent-prompt/repair-plan; API worker owns api-agent-client,
+shared/settings, settings-store/providers; native worker owns Hands TS and native
+C# except protected PowerShellAstGuard.cs. No renderer edits by A.
+
+B contract (implementing now): optional snapshot.connection: ConnectionCheck
+from shared/connection.ts; absent while signed out, checking while the tiny
+model-only check runs, ready only after a successful response, failed with a
+plain reason. Optional preload retryConnectionCheck(): Promise<{ok:boolean;
+message?:string}> uses channel lalime:retryConnectionCheck, no arguments.
+Retry cannot run during a repair. Settings/account changes invalidate old checks.
+
+Optional snapshot.repairPlan: RepairPlan from shared/repair-plan.ts:
+{symptom:string, causes:Array<{label:string,likelihood:"likely"|"possible"|
+"ruled_out",evidence?:string}>, fixes:Array<{label:string,cause?:string,
+status:"pending"|"trying"|"worked"|"failed"|"skipped"|"declined"}>}.
+Existing snapshot.plan remains the existing steps. Clear repairPlan on a new
+turn/disconnect; legacy models may send only steps. Do not infer completed fixes
+from plan labels; they are model-reported diagnosis, separate from host activity.
+
+B settings change needed: maxToolCalls and requestTimeoutMs are being removed
+from AppSettings; saved legacy fields are dropped during migration. Remove both
+controls/references (ProviderSettings currently reads requestTimeoutMs). Output
+maxTokens remains a provider response budget, not a turn/tool limit.
+
+### Batch 13 - B renderer verification in progress
+
+B removed the tool-count control and payload field. ConnectionPanel and the
+fixed-width header status use shared/connection.ts. The initial 9 browser checks
+failed before implementation; all 15 checks passed on the isolated renderer build.
+Review added stale snapshot, legacy Retry, save-only, and late-error checks.
+B read A's turn 2 contract and is changing Retry to retryConnectionCheck and
+removing requestTimeoutMs from the form and payload. Browser contract red is
+running before that change. B does not implement the new repairPlan surface in
+this small connection batch.
+
+The 00:17 full unit run had 798 pass / 15 fail / 4 skip. Failures are in
+hands-batch13-execution, live-agent-security, and session-connection-check during
+active host edits. Evidence: artifacts/ui-batch13-vitest.log. B does not edit
+those files. Renderer build and typecheck passed before the turn 2 host changes.
+Final browser counts, source list, and handoff follow after contract alignment.
+
+### Batch 13 - B renderer completed and handoff
+
+Finished files: src/components/ProviderSettings.tsx, new ConnectionPanel.tsx,
+src/components/chat/WorkingIndicator.tsx, src/pages/ChatHome.tsx,
+new src/lib/connection.ts, src/lib/store.ts, src/copy/en.json,
+src/copy/source.json, new scripts/ui-connection-status.ts, and this record.
+
+- Removed Maximum tools per turn from the form and settings payload. Per A's
+  turn 2 contract, also removed Request timeout. The explicit payload allowlist
+  drops both legacy fields even when an old snapshot still includes them.
+- Added checking, verified Ready, and plain failure panels. Ready uses the
+  shared ConnectionCheck type and requires an explicit ready signal. Account,
+  plan, and model are shown only from that signal. Three repair examples close
+  Settings, fill the composer, and move focus there. They do not send a message.
+- Added a fixed-width mobile header pill for Ready, Working, Signed out,
+  Checking, and Problem, with text and a polite status announcement.
+- Full snapshots that omit connection clear stale Ready. Idle status changes
+  render immediately so an exit animation cannot keep the old Ready label.
+- Retry calls optional retryConnectionCheck(), per A's turn 2 contract. A
+  resolved refusal or rejected call shows a plain reason and permits retry.
+  An old host without this method gets an unavailable explanation. Retry never
+  saves an unfinished draft. Late errors cannot replace a newer terminal host
+  result. Provider text uses visibleText; no response is rendered as HTML.
+
+Red evidence (all commands use Node directly and Edge/msedge):
+- node scripts/ui-connection-status.ts: initial 9 failures, exit 1; exact
+  test source and log in artifacts/ui-batch13-connection-red.txt and .log.
+- Five stale-state/review failures, exit 1: artifacts/ui-batch13-connection-
+  review-red.txt and .log (save-only, legacy Retry mutation, late failure,
+  omitted snapshot, and legacy Ready text).
+- Contract alignment: two failures, exit 1, before timeout control removal and
+  retryConnectionCheck wiring. Evidence: artifacts/ui-batch13-connection-
+  contract-red.txt and .log.
+- Resolved Retry refusal: one failure, exit 1, with CONNECTION_CASE='refused
+  Retry', then the exact case passed after the fix. Frozen source and results:
+  artifacts/ui-batch13-connection-retry-refusal-red.txt and
+  artifacts/ui-batch13-connection-retry-refusal-green.txt.
+Accepted checks were preserved during each fix. One fixture state was corrected
+from an invalid signed_out ConnectionCheck to an absent connection. A separate
+API-key case and an explicit legacy timeout fixture were added for coverage.
+Independent review found the async/Retry issues above; B added failing checks
+and fixed each issue.
+
+Verification:
+- npm run typecheck: exit 0; artifacts/ui-batch13-typecheck-handoff.log.
+- node node_modules/vite/bin/vite.js build --outDir artifacts/ui-batch13-handoff-build:
+  exit 0; artifacts/ui-batch13-handoff-build.log. No shared dist output.
+- LALIME_URL=http://127.0.0.1:43129 LALIME_BROWSER_CHANNEL=msedge
+  node scripts/ui-connection-status.ts: 17 passed, exit 0, final isolated build.
+  Evidence: artifacts/ui-batch13-connection-handoff.log and
+  artifacts/ui-batch13-connection-handoff-green.txt.
+- node scripts/ui-smoke.ts: 12 passed; node scripts/ui-chat-regressions.ts:
+  6 passed; node src/tests/ui-first-use.ts: 8 passed. All exit 0 with Edge at
+  port 43128 on the prior isolated build. Logs: artifacts/ui-batch13-smoke-final.log,
+  ui-batch13-chat-final.log, ui-batch13-first-use.log.
+- node scripts/ui-trust-regressions.ts: 138 passed, exit 0, Edge at port 43126
+  on the first isolated build; artifacts/ui-batch13-trust.log. Later changes
+  only aligned ProviderSettings Retry/retired settings; trust sources unchanged.
+- Scoped git diff --check for src and scripts/ui-connection-status.ts: exit 0.
+- No installed ship-check skill or repository lint/format command is available.
+  Repository-native checks ran directly. The direct Node browser invocation
+  avoids the existing tsx uv_os_get_passwd failure.
+
+Screenshots: artifacts/screenshots/batch13-ready.png, batch13-api-ready.png,
+batch13-checking.png, batch13-failed.png, and batch13-header-{ready,working,
+checking,problem,signed-out}.png. B inspected the ready panel and mobile header.
+The checks cover 390 by 700 pixels and reduced motion.
+
+Remaining combined-tree gate: the 00:21 full run
+node node_modules/vitest/vitest.mjs run --maxWorkers=6 exited 1 with 834 passed,
+6 failed, 8 skipped (92 files). Evidence: artifacts/ui-batch13-vitest-final.log.
+Failures: live-agent-security (old tool-cap expectation), session-settings
+(four old cap/timeout expectations), and session-provider.integration
+(connectProvider returned false). These files are in A/Claude E's active host
+lane. B did not change or weaken them. C must rerun the full gate after A's
+work lands and confirm the actual preload exposes retryConnectionCheck.
+Browser tests use a synthetic bridge; no real account, provider call, native
+repair, installer, or Electron sign-in was exercised by B.
+
+No protected files, host files, shared settings, policies, commits, pushes,
+packaging, or other workers' files were changed by B.
+
+HANDOFF to Codex C
+
+## Batch 13 turn 2 - B active renderer scope
+
+B imported shared/repair-plan.ts and integrated optional snapshot.repairPlan in
+the chat. Missing repairPlan clears a stale checklist and uses the existing
+StepTimeline. Browser red: 5 missing-checklist failures before implementation.
+B owns src, renderer tests, browser scripts, and this log only.
+
+Copy pass read all five requested Deliberate sources. The supplied voice-rules
+test checks remote service behavior; local Vitest house-rule guards cover the
+UI copy instead. A JSON audit covered 212 slots; a separate read-only TSX/
+library audit and TypeScript AST pass covered the renderer. Human review keeps
+safety meaning and uncertainty. Commands and host/user text are not copy edits.
+The source instructions about the copy service are reference workflow guidance;
+the current user explicitly requested this rewrite. No service was called.
+
+Connection snapshot, retry method, preload and IPC names now match A's posted
+contract. Real model checks remain host-owned. B will run the browser gates on
+an isolated build and post exact final evidence and a before/after table below.
+
+### B turn 2 gate update for A/C
+
+The first full unit run passed: 860 passed, 9 skipped at 00:28
+(artifacts/b13t2-vitest.log). A later run at 00:33 found two new host failures:
+- tests/codex-client.test.ts: queued turn start expires at transport deadline.
+- tests/hands-batch13-transport-error.test.ts: native process not killed on
+  transport error.
+Latest count: 861 passed, 2 failed, 10 skipped; 98 files. See
+artifacts/b13t2-vitest-final.log. B did not edit either host test or handler.
+Renderer typecheck and isolated build passed in the same run.
+
+Independent review found sc query Spooler, net stop Spooler, ping localhost,
+and del notes could pass both label filters. B added failing browser cases and
+blocked these command forms in the repair checklist. This is presentation only.
+A can align its plainPlanLabel filter; no Guardian policy change is requested.
+Browser labels now also cover taskkill, dir, call, start, and copy forms.
+
+### Batch 13 turn 2 - B completed renderer work
+
+Repair checklist: new src/components/chat/RepairChecklist.tsx and
+scripts/ui-repair-checklist.ts; integration in src/pages/ChatHome.tsx and
+src/lib/store.ts. Uses shared/repair-plan.ts without changing it. Displays
+symptom, likely-first causes, ruled-out causes with evidence, and all six fix
+statuses. Declined says You said no. Icons have text equivalents. Trying stops
+spinning with reduced motion. The model-assessment label does not certify a
+repair. The checklist has no approval or execution controls. Missing fields
+clear stale diagnosis and use the original step timeline.
+
+Paths and known command forms are suppressed in all diagnosis fields, including
+evidence and cause references. Browser checks include Windows paths, relative
+paths, filenames, PowerShell commands, common shell commands, and ordinary
+repair prose that must remain visible. This is a bounded display filter, not a
+Guardian rule or a complete classifier for every possible command language.
+
+Copy: reviewed all 212 JSON slots and source briefs; changed 29 slots. Updated
+hardcoded copy in PlanRail, ProviderSettings, CopyButton, ChatHome, Onboarding,
+and src/lib/demo-engine.ts. Added tests/deliberate-copy.test.ts and
+tests/renderer-copy.test.ts. The independent audit read all TSX files and the
+renderer libraries; a second TypeScript AST pass checked literals. Dynamic user
+and host data, exact commands, approval consequences, hold durations, grant
+limits, uncertain restores, and the Stop caveat were kept intact. Removed the
+demo's appended absolute assurance; decision.plainEnglish stays unchanged.
+
+Notable before/after copy:
+
+| Slot | Before | After |
+| --- | --- | --- |
+| errors.signInRequired | Sign in with ChatGPT or your own API key first. Lalime needs your account before it can help. | Sign in with ChatGPT or your own API key before asking for help. |
+| onboarding.welcome.title | Your computer, done for you. | Help with your computer |
+| onboarding.guardian.title | Nothing dangerous happens behind your back. | You review risky steps |
+| blocked.eyebrow | Guardian is looking out for you | Guardian blocked this step |
+| stopped.title | Stopped. You are in control. | Stopped |
+| about.author | Made by Jackson Price -- open source | Made by Jackson Price. Open source |
+| changes.failed | Could not restore this change. | Could not restore this change. Review the result before trying again. |
+| connection.checkingHint | Checking that your model can reply. If a sign-in page opened, finish there first. | Waiting for your model to reply. If a sign-in page opened, finish there first. |
+| Hardcoded Settings heading | Tune the agent | Model options |
+| Copy button | Copy failed. Try again. | Copy failed, try again |
+| Empty plan | A little help, step by step. Steps will show up here when Lalime is working. | Steps appear when Lalime starts a task. |
+| Empty activity | Nothing changed yet. You can follow the work here. | No changes yet. |
+| Welcome and Settings eyebrows | A little help goes a long way / Make yourself at home | Removed; the existing headings identify the screens |
+
+All exact copy changes: artifacts/b13t2-copy-changes.json and
+artifacts/b13t2-hardcoded-copy-changes.json. Source briefs remain paired with
+the visible JSON keys. The local copy guards enforce house rules; they do not
+claim to replace semantic review or port the unrelated Deliberate service tests.
+
+Browser assertion updates preserve the tested behavior and use the new strings:
+scripts/ui-activity-regressions.ts, ui-boot-regressions.ts,
+ui-chat-regressions.ts, ui-smoke.ts, ui-trust-regressions.ts,
+ui-undo-accessibility.ts, ui-undo-details.ts, ui-connection-status.ts,
+src/tests/ui-first-use.ts, and ui-undo-withdrawal.ts.
+
+Connection: read shared/types.ts, shared/ipc.ts, electron/preload/index.ts,
+and host connection handling. Optional snapshot.connection and optional
+retryConnectionCheck now match the renderer. No host edit was needed. The
+17 connection browser checks pass; real account/model calls remain untested
+by B and belong to the host/Electron gate.
+
+Red evidence:
+- Repair missing UI: 5 failures, exit 1, artifacts/b13t2-repair-red.txt/.log.
+- Filename/standalone command: 1 failure, 6 passes, exit 1,
+  artifacts/b13t2-repair-labels-red.txt/.log.
+- Windows command forms: 1 failure, 6 passes, exit 1,
+  artifacts/b13t2-repair-windows-commands-red.txt/.log.
+  All contain exact accepted test source; each exact script passed after its fix.
+- JSON guard: 2 failures, 3 passes, exit 1. artifacts/b13t2-copy-red.log and
+  b13t2-copy-red-test.ts; same command green with 5 passes.
+- TSX guard: 2 failures, 1 pass, exit 1 after correcting an initial test syntax
+  error. artifacts/b13t2-renderer-copy-red.log and red-test.ts; same command
+  green with 3 passes. With existing copy tests, 10 passed.
+
+Verification and commands:
+- npm run typecheck: exit 0, artifacts/b13t2-typecheck-final.log.
+- node node_modules/vite/bin/vite.js build --outDir artifacts/b13t2-handoff-build:
+  exit 0, artifacts/b13t2-build-final.log. No shared dist build or packaging.
+- Own Vite source server used 43131; isolated previews used 43132 and 43133.
+  No use of 43123 or 43127. Edge/msedge and LALIME_URL were explicit.
+- npm run test:ui and npm run test:ui:chat each exited 1 before tests because
+  tsx calls os.userInfo and receives uv_os_get_passwd ENOMEM. Logs:
+  artifacts/b13t2-npm-smoke.log and b13t2-npm-chat.log. The same scripts ran
+  directly with Node 24 and Edge, without editing the test behavior.
+- Direct Node browser suites on the isolated preview all exit 0:
+  ui-smoke 12, ui-chat-regressions 6, ui-repair-checklist 7,
+  ui-connection-status 17, ui-trust-regressions 138,
+  ui-activity-regressions 23, ui-boot-regressions 3,
+  ui-undo-accessibility 4, ui-undo-details 8, ui-first-use 8,
+  ui-undo-withdrawal 21. Total: 247 checks. Logs: artifacts/b13t2-ui-*.log.
+  The final command-filter change also passed the same 7 repair checks on the
+  final 43133 handoff build; artifacts/b13t2-repair-handoff.log/.txt.
+- Full Vitest: first 860 passed / 9 skipped; latest 861 passed / 2 failed /
+  10 skipped while A added host tests. The two failures are listed above.
+  Command: node node_modules/vitest/vitest.mjs run --maxWorkers=6.
+  Evidence: artifacts/b13t2-vitest.log and b13t2-vitest-final.log.
+- Scoped git diff --check: exit 0. No installed readable ship-check or
+  repository lint/format command; native checks ran directly.
+
+Screenshots: artifacts/screenshots/batch13-repair-causes.png,
+batch13-repair-fixes.png, and batch13-repair-fallback.png. B and the component
+worker inspected the 390 by 700 layout. No horizontal overflow; the chat
+scroller keeps the composer and header available.
+
+C: rerun the combined host unit gate after A's active changes and perform the
+Electron/model/native gate. No protected files, host/shared files, policy,
+commits, pushes, packaging, or deletes were changed by B.
+
+HANDOFF to Codex C
+
+### Batch 13 turn 2 - A connection cancellation note for B
+
+The host intentionally has no elapsed model-check deadline, per Jackson's C2.
+retryConnectionCheck() now cancels and replaces a check that is still pending.
+The existing stop() method also cancels it. Please expose Retry or Cancel while
+connection.state is checking, even while the original connect IPC is pending.
+Current ConnectionPanel only shows Retry after failed and ProviderSettings busy
+can disable it. A stalled provider otherwise has no visible escape in that panel.
+A's test proves a pending retry can be replaced; B owns the visible controls.
+The host refuses a new repair while checking, so the check cannot overwrite a
+repair status. Account/model changes and disconnect also cancel stale checks.
+
+## Batch 13 turn 2 - A host implementation and repair capability
+
+This section replaces the Batch 13 turn 1 capability table. Claude E's released
+changes remain in place, except the tool-count setting and execution deadlines
+that Jackson explicitly removed. No renderer or protected Guardian file was
+edited by A. Existing changes from other lanes were preserved.
+
+### Host and B contracts
+
+- The live model now gets ten tools: lalime_update_plan, lalime_screenshot,
+  lalime_list_windows, lalime_list_ui, lalime_click, lalime_set_value,
+  lalime_type, lalime_open_settings, lalime_recycle, lalime_run_powershell.
+  Both Codex and API clients use this tool list. Codex's thread/turn sandbox
+  remains read-only; features.shell_tool remains false.
+- lalime_run_powershell accepts {command:string, why:string, admin?:boolean}.
+  It validates input, runs the native precheck, evaluates the real command with
+  Guardian, obtains the required card/hold, then calls Hands. admin is visible
+  on the card and cannot receive a reusable task grant. A failed, interrupted,
+  or thrown execution gets an uncertain, non-undoable activity entry; a declined
+  or precheck-blocked request has no execution entry. Output is bounded and
+  labelled untrusted. This does not change Guardian command-output taint policy.
+- lalime_set_value accepts {name:string, value:string|number, windowTitle:string}.
+  It uses Guardian's existing ui_type route and approval. Native support covers
+  RangePattern sliders, exact selection items, toggles, and text fields. It
+  refuses disabled/password/ambiguous targets and unsupported numeric controls.
+- snapshot.repairPlan?: RepairPlan is defined in shared/repair-plan.ts. It has
+  symptom, causes [{label,likelihood,evidence?}], and fixes [{label,cause?,status}].
+  Existing snapshot.plan is unchanged. New turns and disconnect clear the repair
+  plan. Labels are bounded plain text; recognizable paths and commands are
+  omitted. These are model-reported plans, not proof that a repair succeeded.
+- snapshot.connection?: ConnectionCheck comes from shared/connection.ts:
+  checking | ready | failed, with model, optional account/plan, and reason only
+  on failed. No account plan is inferred. "Provider default" means the server
+  has not supplied a resolved model identifier. Ready requires a tool-free model
+  response after sign-in. Check text never enters the user's conversation.
+- Optional preload retryConnectionCheck() returns Promise<{ok:boolean;
+  message?:string}> through lalime:retryConnectionCheck with no arguments.
+  Existing sender validation applies. Retry replaces an in-flight check; Stop,
+  disconnect, or settings changes cancel it. Retry is refused during a repair,
+  and new repair input is refused while checking. B must expose a cancellation
+  or retry control while checking; see the earlier A cancellation note.
+- maxToolCalls and requestTimeoutMs are removed from AppSettings, API options,
+  and execution paths. Saved legacy values are tolerated and dropped. There is
+  no total tool-count cap or elapsed repair deadline. RepeatGuard returns a
+  consecutive-repeat note, not a failure. Stop still cancels pending work.
+  Response-size/context/schema bounds and provider output maxTokens remain.
+  Authentication/control RPC and worker-handshake limits are not repair timers.
+
+### Repair capability (Batch 13)
+
+"Available" below means the route is implemented and tested with mocked host
+calls and/or harmless native fixtures. It does not mean a real repair succeeded
+on Jackson's PC. Real UAC, actual Settings pages, and real-model rounds remain
+Codex C's desktop gate. Guardian's current result always controls the card.
+
+| Repair | Available through approved tools | With UAC | Still blocked or unverified |
+| --- | --- | --- | --- |
+| Display, sound, network and other Settings | Open page, list hosted CoreWindow controls, click or set supported values, inspect again | Windows-owned prompts remain for the user | Synthetic hosted-window and actual control-state tests pass; real Settings page coverage and foreground typing still need desktop checks |
+| Startup apps | Settings controls and targeted approved commands | admin:true for a specific operation that needs it | No claim that every startup mechanism or device policy is supported |
+| App uninstall/repair | Settings controls; approved winget or other installed repair command | One approved command can request UAC | Installed tool availability, interactive installers, and actual uninstall are not exercised |
+| Temp/cache and disk cleanup | Settings controls, approved command route, recycle allowed known-folder children | One approved cleanup command can request UAC | Direct recycle remains restricted to children of the six configured known folders; no shell workaround for a refused action |
+| Printer/spooler | Approved service diagnostics and repair commands | One command via the new broker | Existing Start/Stop-Service Spooler hold remains; real printer repair not exercised |
+| DNS/network reset | Approved ipconfig, netsh, network adapter and DNS checks | admin:true when Windows requires it | Existing Guardian tier remains; no real network reset was run |
+| Other services | Approved service inspection and permitted start/stop/restart commands | One command via UAC | Never-list service blocks remain; elevation cannot override them |
+| SFC/DISM | Approved scan/repair command route with no elapsed execution deadline | New per-command broker | Harmless 22-second command proves former 20-second limit removed; a real long SFC/DISM scan is not verified |
+| Windows Update | Settings and approved diagnosis/repair commands | One command where permitted | Existing Stop-Service wuauserv block remains; changing that is Jackson's policy decision |
+| Driver/device information | Approved Get-PnpDevice/Get-CimInstance and related diagnostic commands | Only if that particular operation needs it | Driver install/removal and actual device changes are not verified |
+| Registry reads and targeted HKCU edits | Approved PowerShell/registry commands | Only where Windows requires it | Existing HKCU edit hold remains; no generic registry backup or automatic Undo is implemented |
+| System32 wipe, boot/security/account restrictions | Existing Guardian restrictions apply | UAC never overrides a block | No policy changes in this batch |
+
+The native UAC broker uses an authenticated one-command named pipe instead of
+an output file. This avoids elevated writes to renderer-selected or temporary
+paths. It checks both peer process IDs, a random token, and the exact command
+hash. It runs a separate Hands worker through Verb=runas, not an elevated app.
+The worker repeats the native precheck and owns a kill-on-close job. Host EOF,
+Stop, or lost transport closes the worker connection. Output is bounded and
+returned through the pipe. CurrentUserOnly deliberately requires the same user;
+a standard user supplying a different administrator account may be refused.
+Actual UAC consent and that alternate-account case remain desktop tests.
+
+Native window resolution now enumerates real top-level HWNDs and selects hosted
+Windows.UI.Core.CoreWindow content. It reads optional UIA properties safely and
+filters actionable matches before deciding that duplicate names are ambiguous.
+The native precheck remains the existing regex/string check. It is not a complete
+PowerShell AST sandbox. PowerShellAstGuard.cs and Guardian rules were not edited.
+
+### Prompt, image, and Anthropic details
+
+The prompt now states the symptom/evidence/candidate-fixes/verification loop,
+read-only evidence before clarification, alternate useful routes after failures,
+and handoff only for physical steps or exhausted useful alternatives. Declined
+and blocked actions remain unavailable. Screenshot text is a short untrusted-data
+note; image bytes are in inputImage only. Both the tool description and prompt
+instruct Code Mode to emit the image separately and never print the whole result.
+The wire format matches the documented app-server contentItems contract. Actual
+Code Mode behavior still needs the real-model rerun; these tests do not prove
+that the model will follow the image instruction.
+
+Anthropic was already an API preset with a native Messages client. It uses
+POST /v1/messages, x-api-key and anthropic-version 2023-06-01; no guessed OpenAI
+compatibility endpoint was added. Official sources checked:
+https://platform.claude.com/docs/en/api/overview,
+https://platform.claude.com/docs/en/api/messages/create, and
+https://platform.claude.com/docs/en/api/versioning.
+Connection checks and cancellation are now tested for this native protocol.
+No real key, account credential, live API call, or subscription entitlement was
+used or copied by this lane.
+
+### Files and red evidence
+
+Host: agent-prompt.ts, live-agent.ts, api-agent-client.ts, codex-client.ts,
+session.ts, settings-store.ts, new connection-check.ts, main/ipc.ts, preload/index.ts.
+Shared: settings.ts, types.ts, ipc.ts, connection.ts, new repair-plan.ts.
+Hands: src/{types,node-hands,windows-bridge}.ts; windows/Hands/Program.cs;
+new WindowsUiTargets.cs and ElevatedCommandBroker.cs.
+Tests: API/settings migration, Codex requests, session connection/settings/provider,
+IPC, prompt/labels/routes, live repair/value/command outcomes, Hands execution/
+transport/native lifecycle, and isolated native broker/UI fixture projects.
+The earlier B tests and source changes are separate from A's work.
+
+Durable red logs and exact frozen tests are under scratch/qa-evidence and
+scratch/qa-batch13-turn2. API evidence and exact commands are summarized in
+scratch/qa-batch13/api-client-notes.txt. Native UI evidence is in
+scratch/qa-batch13/native-ui-evidence.txt. Native process and broker evidence
+is under scratch/qa-evidence/batch13-hands.
+- API initial red: 14 failed/30 passed; final focused API/provider/migration: 53 passed.
+- Live repair red: 10 failed/6 passed; value route red: 4 failed/7 passed.
+- Root connection red: 5 missing checks; review red: 3 lifecycle failures;
+  final connection suite: 9 passed. IPC retry red: 1 failed/4 passed, then 5 passed.
+- Queued Codex turn start and Stop red: 2 failed/17 passed, then 19 passed.
+- Failed command activity, explicit prompt requirements and command labels:
+  8 failed/9 passed, then 17 passed; nearby suites: 77 passed.
+- Native UI corrected frozen fixture: 8 passed/4 failed, then 12 passed.
+  The original WinForms TrackBar test assumed RangePattern support it does not
+  expose. The corrected test requires honest refusal and unchanged value; the
+  separate WPF RangePattern success test remains and checks the real value.
+
+### For Jackson and remaining desktop verification
+
+No Guardian changes were made. Existing policy questions remain: wuauserv block,
+recycle outside the six roots, command-output taint, OneDrive/grant tiers,
+Clear-Content/overwrite, and split exfiltration. Registry backup language in
+existing policy must not be treated as an implemented generic backup.
+
+C must rebuild the final native source in the normal desktop environment, rerun
+real Electron approval/hold/Stop contracts, and rerun the 12 real-model symptoms.
+Specifically check actual Settings control discovery/click/value/foreground type,
+UAC accept/deny/Stop, model-ready sign-in, and Code Mode screenshots without text
+base64 dumps. These claims cannot be established by offscreen fixtures or mocks.
+A did not commit, push, package, delete other files, or perform real PC repairs.
+Final combined gate results follow after the last native lifecycle review fix.
+
+### Batch 13 turn 2 - A final gate and handoff
+
+Final root gate at 00:40 CT, after the native lifecycle review fix:
+- node node_modules/vitest/vitest.mjs run --maxWorkers=6: exit 0,
+  881 passed / 11 skipped, 97 passed suites / 4 skipped suites.
+  Log: scratch/qa-batch13-turn2/full-vitest-final.log. The default run skips
+  environment-gated native fixtures; those ran separately against the isolated
+  native binary. Existing platform-specific skips remain.
+- npm run typecheck: exit 0; scratch/qa-batch13-turn2/typecheck-final.log.
+- node node_modules/typescript/bin/tsc -p tsconfig.electron.json --outDir
+  artifacts/codex-a-batch13-turn2/final-dist-electron: exit 0.
+  Log: scratch/qa-batch13-turn2/host-build-final.log.
+- buildPreload({outDir:'artifacts/codex-a-batch13-turn2/final-dist-electron/electron/preload'})
+  through the exported scripts/build-preload.mjs function: exit 0.
+  Log: scratch/qa-batch13-turn2/preload-build-final.log.
+- Scoped git diff --check for host/preload/Hands/shared/tests/LANES: exit 0.
+- Native focused run: 69 passed in 14 suites, including the real harmless
+  22-second command, native stdin EOF, bridge transport failures, and actual
+  worker plus PowerShell process exit after parent death. This uses the isolated
+  native executable, with the UAC launcher replaced by a fixture launcher.
+  Log: scratch/qa-evidence/batch13-hands/final-focused.log.
+- Authenticated named-pipe broker fixture: 7 passed. UI fixture: 12 passed.
+  Logs: scratch/qa-evidence/batch13-hands/green-broker-checks.log and
+  scratch/qa-batch13/native-ui-green.log. Native builds had no warnings/errors.
+- The last bridge review found kill(false)/kill(throw) could discard a live
+  worker. Four red tests now pass: stdin is closed to trigger native cancellation,
+  unconfirmed workers remain tracked, and new work is refused until exit.
+  Evidence: batch13-hands/{red,green}-termination-failure.log and frozen source.
+  A fake process kill method was corrected to return true, as Node's API requires;
+  accepted behavior assertions were unchanged.
+
+No installed ship-check skill or repository lint/formatter command was available.
+Repository-native checks ran directly. No shared dist build or packaging ran.
+B owns browser verification and the pending-check Retry/Cancel affordance. C owns
+real Electron/UAC/Settings and real-model reruns listed above. All A write owners
+have released their files. The app is not claimed to fix all 12 real symptoms
+until that desktop evidence exists.
+
+HANDOFF to Codex C
+
+A native reproduction commands (all outputs are isolated):
+
+```powershell
+dotnet build hands/windows/Hands/Hands.csproj --artifacts-path artifacts/codex-a-batch13/hands-native -c Release --no-restore '-p:TargetPlatformMoniker=Windows,Version=7.0' '-p:ProjectAssetsFile=A:/codingProjects/Lalime Congressional App/hands/windows/Hands/obj/project.assets.json'
+dotnet build tests/native/HandsBrokerChecks/HandsBrokerChecks.csproj --artifacts-path artifacts/codex-a-batch13/hands-checks -c Release --no-restore '-p:TargetPlatformMoniker=Windows,Version=7.0' '-p:ProjectAssetsFile=A:/codingProjects/Lalime Congressional App/hands/windows/Hands/obj/project.assets.json'
+& artifacts/codex-a-batch13/hands-checks/bin/HandsBrokerChecks/release/HandsBrokerChecks.exe artifacts/codex-a-batch13/hands-native/bin/Hands/release/Hands.exe
+$env:LALIME_NATIVE_TEST_EXE = (Resolve-Path artifacts/codex-a-batch13/hands-native/bin/Hands/release/Hands.exe).Path
+$env:LALIME_BROKER_TEST_EXE = (Resolve-Path artifacts/codex-a-batch13/hands-checks/bin/HandsBrokerChecks/release/HandsBrokerChecks.exe).Path
+```
+
+The native SDK override reuses the existing restored assets in this restricted
+workspace; it does not change the shipping project configuration. Node fallback
+Stop cancels its direct child. Verified process-tree containment is the native
+Windows product path, not a claim about every fallback platform.
+
+HANDOFF to Codex C
+
+## Batch 13 turn 3 - A real-model stabilization
+
+Read the overseer SCOREBOARD rounds 3-7 and FINDINGS-for-A before edits. Those
+runs report 5/5 broken states fixed on the turn-2 tree. This small change does
+not claim a new real-model score. No PC repair or live provider call was run.
+
+Files changed this turn: electron/main/agent-prompt.ts,
+electron/main/live-agent.ts, new tests/batch13-stabilization-prompt.test.ts,
+and this record. No Hands, renderer, shared contract, Guardian policy, protected
+contest file, or existing unrelated change was edited in this turn.
+
+T1: The shared prompt now asks for 2-4 plausible causes in lalime_update_plan
+before testing, then ranking with observed evidence. The plan tool description
+repeats that requirement. Slow-PC guidance requires two per-process CPU samples,
+elapsed-time and logical-processor normalization, and inspection of the top
+process's command line and identity before settings changes. It prefers an
+approved stop of a confirmed runaway user process over changing the power plan.
+Cleanup must show files and sizes and ask which to remove unless the user already
+named the files. Unrelated installers must not be bulk-recycled in one card.
+Reply instructions prohibit em/en dashes as sentence punctuation while preserving
+exact quoted data. A decline gets one permitted alternative and manual steps,
+then waits for the user; it does not authorize another change automatically.
+The copy source read was overseer/deliberate/LALIME-COPY-RULES.md.
+
+T2 finding: lalime_run_powershell correctly submits kind powershell to Guardian.
+DEFAULT_ACTION_TIERS.powershell is 2 in guardian/src/tiers.ts. The descriptive
+rule is tier.shell.default. evaluateActionSync starts at that default and ASK
+rules only raise it; the optional reviewer also cannot lower severity. The
+sessionAllowRuleIds option only skips individual ASK matches, not the default.
+Tier-0 file_read/sysinfo/screenshot kinds are not a classifier for arbitrary
+PowerShell. No existing proof-bearing read-only command API is being missed.
+The host therefore keeps current approvals. Relabeling the same command as
+sysinfo would bypass policy. Screen-observation provenance can separately require
+fresh consent even if a future diagnostic classifier selects a lower tier.
+
+T3 finding and correction: guardian/src/ask-rules.ts, ask.registry, promises
+"A backup will be kept first." Neither the host nor native PowerShell route
+exports registry data or records a restore journal. The host already sets
+undoable:false. It now replaces that exact false sentence on shell/PowerShell
+ask.registry approval cards with "Lalime does not automatically back up this
+command or provide Undo." The risk tier, hold requirement, matched rule IDs,
+command payload, and execution route are unchanged. Block explanations are not
+rewritten. No backup or registry Undo was added or promised. General registry
+export from arbitrary PowerShell needs reliable target parsing and restoration
+semantics; it is outside this stabilization change.
+
+Contract note for B/C: no IPC or snapshot schema changes. The existing
+pendingApproval.decision.plainEnglish carries the truthful registry sentence;
+undoable remains false. Existing prompt wiring sends the same instructions to
+Codex and to both API protocols. Tests inspect actual OpenAI and Anthropic
+request bodies from LiveAgentHost. The new plan guidance does not reject older
+one-cause plans or change the repairPlan schema.
+
+### For Jackson - exact diagnostic policy proposal
+
+Consider a new tier.powershell.readonly classifier after never-list/untrusted
+checks and before the default tier is selected. Assign tier 0 only to structurally
+verified, non-admin diagnostics with literal permitted arguments. Start with
+standalone Get-CimInstance Win32_OperatingSystem, Get-ChildItem -LiteralPath of an
+allowed local folder, Get-ItemProperty -LiteralPath of a permitted registry key,
+and literal powercfg /query. Unrecognized syntax must retain current evaluation.
+Do not use a Get-* or verb-only regex. Preserve normal ASK escalation and never
+blocks. Reject compound statements, execution-bearing arguments, scriptblocks,
+subexpressions, redirection, dynamic/member invocation, and unverified pipelines
+from the read-only classification. Remote/provider paths and sensitive reads
+need explicit policy decisions. Dedicated typed diagnostics are an alternative
+if structural validation is not available.
+
+Regression pairs to require before such a change:
+- Get-CimInstance alone versus a diagnostic followed by a mutation.
+- Get-ChildItem alone versus a pipeline into Remove-Item.
+- Get-ItemProperty versus Set-ItemProperty or Remove-ItemProperty.
+- powercfg /query versus powercfg /setactive.
+- Literal local arguments versus command substitutions or remote/provider paths.
+
+Risks: embedded execution, provider side effects, sensitive data exposure, remote
+access, and checking text different from the executed command. No policy change
+was made. Please also correct the original ask.registry template/undoable claim;
+the host now makes its own card truthful, but direct Guardian consumers still
+receive the original policy text. A future typed HKCU editor would need prior
+value existence/type, registry view, protected backup storage, and tested restore
+behavior before promising backup or Undo.
+
+### Evidence and gate
+
+TDD: before production edits, all 7 tests in the new stabilization suite failed
+for missing prompt requirements or the false registry sentence. The exact frozen
+red source is scratch/qa-batch13-turn3/frozen-red.test.txt. Command:
+node node_modules/vitest/vitest.mjs run tests/batch13-stabilization-prompt.test.ts --maxWorkers=2
+Red exit 1: 7 failed, red.log. Same accepted tests after the fix: exit 0,
+7 passed, green.log. This checks prompt content and routing, not model compliance.
+
+T4: tests/codex-client.test.ts passes the queued-turn deadline and explicit Stop
+cases. tests/hands-batch13-transport-error.test.ts and termination-failure tests
+also pass. No timer or cap implementation changed. Nearby run: 87 passed across
+9 suites, exit 0; scratch/qa-batch13-turn3/nearby.log. Independent read-only review
+found no blockers in the changes or tests.
+
+Final checks at 01:05 CT:
+- npm run typecheck: exit 0; scratch/qa-batch13-turn3/typecheck.log.
+- node node_modules/vitest/vitest.mjs run --maxWorkers=6: exit 0,
+  888 passed / 11 skipped; 98 passed suites / 4 skipped suites.
+  Evidence: scratch/qa-batch13-turn3/full-vitest.log. Existing environment-gated
+  skips remain; native source was not changed or rebuilt in this turn.
+- node node_modules/typescript/bin/tsc -p tsconfig.electron.json --outDir
+  artifacts/codex-a-batch13-turn3/dist-electron: exit 0; host-build.log.
+- Scoped git diff --check: exit 0. No installed ship-check or repository
+  lint/formatter command was available; repository checks ran directly.
+
+C should rerun the real-model slow-PC, cleanup-selection, diagnosis-plan and
+post-decline scenarios on this prompt. Prompt tests alone do not establish that
+a model follows the new guidance. No shared dist build, packaging, commit, push,
+delete, protected-file edit, or real PC repair was performed.
+
+HANDOFF to Codex C
+
+## Batch 13 turn 4 - A provider-output recovery
+
+Read the box lab faults-provider-output.md, summary.md, and the P6 reference
+patch before changes. The patch was not applied: the current tree has no tool
+cap and its fallback must not claim that nothing changed after tools ran.
+This batch changes host recovery, not Guardian approval or repair policy.
+
+Files changed this turn:
+- electron/main/api-agent-client.ts and new provider-output.ts.
+- electron/main/live-agent.ts and session.ts (plain terminal failures and
+  activity-based fallback, no action replay).
+- hands/src/windows-bridge.ts (screenshot error context only).
+- tests/api-agent-client.test.ts and live-agent-transport-close.test.ts;
+  new api-agent-recovery.test.ts, api-recovery-diagnostics.test.ts,
+  session-output-recovery.test.ts, live-provider-output.test.ts,
+  batch13-screenshot-errors.test.ts; this LANES record.
+No protected files, native source, renderer, shared schema, or unrelated edits
+were changed by A. Other lanes' existing work remains in the combined tree.
+
+### Recovery contract for B/C
+
+No IPC or snapshot shape change. Both API protocols now recover inside the same
+turn. Invalid tool calls never reach Hands or the approval queue. Valid calls
+still go through the existing Guardian host.
+
+- Unknown tools, bad arguments, malformed function metadata, and duplicate IDs
+  produce paired error tool results. Duplicate occurrences get fresh internal
+  IDs in both assistant calls and results; only the first valid occurrence can
+  execute. Valid sibling calls remain available. Anthropic uses is_error:true;
+  OpenAI uses the paired tool-role message.
+- Length stops retain partial assistant content and ask the model to continue
+  from completed evidence. Three identical consecutive length-stop responses
+  trigger one tools-disabled summary request. This is a repeated-output guard,
+  not a total tool count or elapsed turn deadline.
+- Failed HTTP, transport, JSON, or message-structure requests retry once. HTTP
+  400 repair removes only detected unsupported trailing assistant blocks; it
+  does not trim valid history or completed tool evidence. Known text, thinking,
+  redacted-thinking, tool calls, and tool results stay. The current tree had no
+  existing 429/5xx backoff; this batch adds a 250 ms abortable retry delay for
+  those statuses. Stop cancels the delay and prevents a second request.
+- If recovery fails, the user sees plain service-failure copy and uncertainty,
+  never the HTTP code, token-limit advice, model-setting advice, response body,
+  or credential. Safe host-authored diagnostic metadata goes to console.warn
+  and the diagnostic event only. No new persistent diagnostic file is created.
+- Completed tool results stay in canonical history after failure or interrupted
+  work. Unfinished batch members receive explicit uncertain/cancelled results
+  so call/result pairing stays valid. Disconnect still clears conversation
+  state. No completed action is replayed by the recovery code.
+- Empty, characterized narration-only, and plan/tool-chatter endings get one
+  outcome-summary request with tool_choice none. The host also refuses any tool
+  calls returned during that summary request. A second bad summary gets a
+  nonempty fallback based on observed completed/failed non-plan calls, with no
+  claim that the symptom is fixed. Fallback text is retained in history.
+- On refusal, one retry receives a clone with only the latest tool output
+  withheld. Canonical evidence is preserved, no planted-instruction diagnosis
+  is invented, and new outputs after recovery remain visible. A second refusal
+  gets a plain fallback. A refusal cannot pass the connection check.
+
+Official protocol fields were checked against Anthropic's handle-tool-calls and
+Overview pages and OpenAI's Chat Completions create reference:
+https://platform.claude.com/docs/en/agents-and-tools/tool-use/handle-tool-calls
+https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview
+https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create
+
+Codex app-server owns its raw provider HTTP/parsing loop; Lalime does not intercept
+or replay that loop. Characterization tests confirm the existing host returns
+unknown-tool and bad-argument errors to Codex and accepts a subsequent valid
+call in the same turn. Raw terminal/startup errors no longer enter chat. At the
+session boundary, empty/narration-only conclusions fall back to actual recorded
+activity and explicit uncertainty. The API summary nudge is implemented in
+ApiAgentClient; no separate automatic Codex repair turn was added. This avoids
+replaying a task whose effects are already recorded. The narration detector is
+conservative and tested against known examples, not all possible model prose.
+
+### Packaged screenshot finding
+
+runs/r8/injection/result.json records the model's "screen capture failed"
+paraphrase, but that scenario directory has no native/tool trace. The GDI capture
+root cause cannot be established from that evidence. Native capture already
+forwards its exception through the bridge. The bridge now adds screen-capture
+context, preserves up to 1,000 characters of the native reason, and suggests
+lalime_list_ui or a read-only alternative. A nominal success without an image is
+now a failure. Stop wording and successful separate image results are unchanged.
+No capture backend or native code was changed, and no real screenshot was taken.
+C should rerun the packaged scenario and retain the tool result/native reason.
+This is an error-reporting improvement, not a claimed capture fix.
+
+### Evidence and final gate
+
+All evidence is under scratch/qa-batch13-turn4. Exact red sources are frozen
+alongside logs. The main API red command was:
+node node_modules/vitest/vitest.mjs run tests/api-agent-recovery.test.ts --maxWorkers=2
+Initial red: 31 failed. Review red: 5 failed/32 passed; second review red:
+8 failed/39 passed. Final API focused run with api-agent-client.test.ts:
+80 passed (47 recovery plus 33 existing), api-focused-green.log. Superseded
+fail-fast expectations were deliberately replaced; no invalid tool is permitted
+by the replacement tests. One refusal retry-boundary refinement was made during
+review and then characterized, rather than claiming a red test for that detail.
+
+Session red: 5 failed; separate failure-after-activity red: 1 failed/5 passed.
+Final session/lifecycle/transport run: 18 passed. Codex malformed-call
+characterization plus session recovery: 8 passed. Screenshot red: 3 failed/2
+passed, then screenshot plus bridge execution: 14 passed. Diagnostic logging red:
+1 failed, then logging plus API recovery: 48 passed. Independent read-only review
+found and closed the plan-count, malformed-sibling, refusal, and chatter gaps;
+final review found no further blocker.
+
+Final combined gate, 01:20 CT:
+- npm run typecheck: exit 0; typecheck-final.log.
+- node node_modules/vitest/vitest.mjs run --maxWorkers=6: exit 0,
+  960 passed, 3 expected failures, 11 skipped; 104 passed suites, 4 skipped.
+  Log: full-vitest-final.log. The expected failures are the separate Guardian
+  never-list-equivalents.test.ts policy cases (driver-store delete, Defender
+  process stop, recursive .NET folder delete). A did not add or edit those tests
+  or their policy. They remain Jackson's decision and are not counted as passes.
+- node node_modules/typescript/bin/tsc -p tsconfig.electron.json --outDir
+  artifacts/codex-a-batch13-turn4/dist-electron: exit 0; host-build.log.
+- Scoped git diff --check: exit 0.
+No installed ship-check or repository lint/formatter command was available;
+repository checks ran directly. Existing native/platform skips remain. No shared
+dist output, packaging, commit, push, delete, or real PC repair was performed.
+
+C should replay the box fault episodes against both real provider protocols and
+check the actual final chat reply, retained evidence on the next turn, Stop
+during retry, and the packaged screenshot diagnostic. Mocked fetch tests do not
+establish a new real-model recovery score.
+
+HANDOFF to Codex C
+
+### Turn 4 final review addendum - repeated truncated actions
+
+The last review found that an identical truncated response could repeat its tool
+execution before reaching the summary guard. Six new regressions cover both
+protocols with unchanged IDs, fresh IDs, and duplicate IDs. Exact repeated-reply
+red: 2 failed; semantic-ID red: 4 failed. Frozen tests and logs are
+api-length-repeat-red.* and api-semantic-repeat-red.* under the same evidence
+folder. The host now computes a semantic fingerprint before dispatch, excluding
+original/generated IDs. Repeated copies return paired errors and do not execute
+again. Normal nontruncated calls are unchanged. Final API/client/diagnostic
+focused run: 87 passed; api-length-repeat-green.log.
+
+This final gate supersedes the 01:20 counts above. After the replay fix at 01:25:
+- npm run typecheck: exit 0, typecheck-final.log.
+- node node_modules/vitest/vitest.mjs run --maxWorkers=6: exit 0,
+  966 passed, 7 expected failures, 11 skipped; 104 passed suites, 4 skipped.
+  full-vitest-final.log contains this final run. The separate Guardian suite
+  gained additional expected policy failures during concurrent work; A did not
+  modify it. Expected failures are not counted as successful safety checks.
+- Isolated host TypeScript build: exit 0, host-build.log.
+- Scoped diff check: exit 0.
+
+All A write owners have released their files. Real-provider fault replay and
+packaged screenshot diagnosis remain C's verification work.
+
+HANDOFF to Codex C
+
+## Batch 13 gate (C) - review only
+
+October 26, 2026. Verdict: GO for the requested code-review gate. No new blocking issue was established in the reviewed changes. This does not clear the seven existing policy gaps or prove native/real-model behavior.
+
+Reviewed current diffs and new runtime/test files: command routing and per-command elevation; API/Codex recovery and connection checks; session/IPC; normalization; repair-checklist and connection UI; new CI/verification files. C made no production or test edits. No build, package, packaged-app run, commit, push, manual deletion, or artifacts/release write was performed.
+
+- Commands: lalime_run_powershell reaches Hands precheck and Guardian; request/consent state is checked again before execution. Admin commands require fresh approval and cannot use task grants. Existing authorized non-admin task grants can omit repeat cards by design.
+- Elevation: runas targets a one-command worker, with parent/client PID checks, nonce, exact-command hash, and repeated AST validation. No whole-app elevation route was found. Actual UAC/job behavior was not exercised.
+- Privacy: provider failure bodies are discarded; raw transport/terminal exceptions are replaced before chat. API diagnostics contain host-authored metadata. No new credential/error-body leak was found in the reviewed paths.
+- Recovery: HTTP/malformed-response retries are bounded to two attempts; refusal and summary recovery are bounded. Tool errors retain call/result pairing. Completed evidence survives failure/Stop, and empty/narration-only endings receive a nonempty qualified fallback.
+- Normalization: canonical tokens are prepended to the old deobfuscated text; original normalized and unquoted text still participate in never-list matching. Execution payloads are unchanged. An in-memory HEAD/current differential probe covered 28 corpus entries: 18 previously blocked, zero lost blocks; old deobfuscated text remained a suffix.
+- Display: repair-plan labels are bounded and escaped display data. They grant no execution authority. Connection-check replies do not enter chat.
+
+Verification:
+- `npm run typecheck`: exit 0; `scratch/qa-batch13-c/typecheck.log`.
+- `node node_modules/vitest/vitest.mjs run --maxWorkers=6`: first exit 1, 965 passed / 1 failed / 7 expected failures / 11 skipped. The 600-file recycle/restore preserved contents but took 8580 ms against its unchanged 5000 ms assertion. Log: `vitest.log`.
+- `node node_modules/vitest/vitest.mjs run tests/node-hands-large-batch.test.ts --maxWorkers=1`: exit 0, 1 passed; `large-batch-isolated.log`.
+- Exact full-suite rerun, without code/test changes: exit 0, 966 passed / 7 expected failures / 11 skipped; 104 passed suites / 4 skipped. Log: `vitest-repeat.log`. The first timing failure remains recorded; its cause was not established.
+- `git diff --check`: exit 0; `diff-check.log`. No readable ship-check skill or separate lint/format command is available. Build/package checks were forbidden for this gate.
+
+Open, non-blocking follow-ups:
+- Changing-narration or nonconsecutive truncated tool repeats are not covered by identical-response deduplication; they rely on host approval, advisory repeat guidance, Stop, and the 8 MiB conversation backstop.
+- Connection-check startup events lack the main host's byte/count buffer bound. A stalled check also leaves Disconnect disabled in the open settings view; closing/reopening Settings restores that control. No hard turn cap is proposed.
+- Seven expected-failure tests remain Jackson's existing Guardian policy decisions: four Defender command variants, driver-store deletion, Defender-process termination, and recursive .NET user-folder deletion. These are not counted as successful safety checks and were not changed.
+- Native/UAC and real-provider fault behavior remain outside this review; another agent owns those tests and artifact outputs.
+
+GO

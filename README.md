@@ -11,6 +11,16 @@ Windows desktop app (Electron). Ask in plain English. Use ChatGPT through Codex,
 
 Congressional App Challenge 2026 — **Jackson Price** (solo), TX-37.
 
+## Download (Windows)
+
+**[Download Lalime-Setup-0.1.0.exe](https://github.com/jacksondavidprice-ui/lalime/releases/download/v0.1.0-cac/Lalime-Setup-0.1.0.exe)** (about 224 MB, Windows 10/11 x64) from the [v0.1.0-cac release](https://github.com/jacksondavidprice-ui/lalime/releases/tag/v0.1.0-cac). All releases: [Releases](https://github.com/jacksondavidprice-ui/lalime/releases).
+
+1. Run the installer. It is not code-signed yet, so Windows SmartScreen shows "Windows protected your PC." Click **More info**, then **Run anyway**.
+2. Open Lalime and click **Sign in with ChatGPT** (needs Codex: `npm i -g @openai/codex`), or open Settings and add your own provider API key.
+3. Send a first message. A real reply is how you know the connection works; "Connected" alone only means the login was saved.
+
+SHA-256 of the v0.1.0-cac installer: `B8C3F2A7535A7BC96BB76727676BE504DF6F0D681D239D6CAAD567CBA276421B`
+
 There is **no demo mode** in the product. Each person supplies their own account or model. Lalime does not supply shared credentials or pay for model usage. API billing can be separate from a provider's chat subscription.
 
 Settings include OpenAI, Anthropic, Gemini, Groq, Mistral, DeepSeek, OpenRouter, xAI, Together AI, Fireworks AI, Cerebras, Ollama, and a custom compatible endpoint. See [provider setup and limits](docs/PROVIDERS.md). Model IDs are editable. A successful request verifies access to the selected model; a catalog entry does not prove account entitlement.
@@ -19,11 +29,13 @@ Screen sharing and computer control start **off**. Settings also control instruc
 
 Optional **better writing**: paste your own Anthropic API key in Settings. After Codex finishes a turn, Deliberate Lite on Claude Opus 5.5 rewrites the reply you see. Without a key (or on error), you get Codex’s text unchanged.
 
-## Quick start (Windows — live agent)
+## Build from source (Windows — live agent)
 
 Development requires Node.js 22.12 or later in a supported even-numbered release, plus the .NET 8 SDK to build the Windows helper. The installer includes the helper's .NET runtime.
 
 ```powershell
+git clone https://github.com/jacksondavidprice-ui/lalime.git
+cd lalime
 npm install
 npm test
 npm run build

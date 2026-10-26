@@ -64,7 +64,7 @@ try {
     const note = page.getByRole("region", { name: "Before you begin" });
     await note.waitFor();
     await note.getByText("You review important steps before they run. Look for Undo beside changes that Lalime can restore.", { exact: true }).waitFor();
-    await note.getByText("Choose an idea below to draft a message. You can edit it before sending.", { exact: true }).waitFor();
+    await note.getByText("Choose an idea to draft a message. Edit it before sending.", { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await page.screenshot({ path: "artifacts/screenshots/batch11-first-use.png" });
   });

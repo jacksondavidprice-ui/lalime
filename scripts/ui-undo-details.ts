@@ -110,7 +110,7 @@ try {
   await check("legacy failed result keeps unknown paths out of the primary alert", async page => {
     await publish(page, { status: "failed", reason });
     const row = page.getByTestId("change-entry"); await row.getByRole("alert").waitFor();
-    assert.equal(await row.getByRole("alert").textContent(), "Could not restore this change.");
+    assert.equal(await row.getByRole("alert").textContent(), "Could not restore this change. Review the result before trying again.");
     assert(!(await row.innerText()).includes("recovery.json"));
     assert.equal(await row.getByRole("button", { name: /restore as/i }).count(), 0);
   });

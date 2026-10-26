@@ -39,7 +39,7 @@ async function check(name: string, reducedMotion: "reduce" | "no-preference", ru
 }
 try {
   await check("loader announces progress and assembles logo from grid cells", "no-preference", async (page) => {
-    assert.match(await page.getByRole("status").innerText(), /Getting things ready/i);
+    assert.match(await page.getByRole("status").innerText(), /Starting Lalime/i);
     const cells = page.getByTestId("boot-logo-cell");
     assert.equal(await cells.count(), 16, "Logo must assemble from a four-by-four grid");
     assert.equal(await cells.first().getAttribute("aria-hidden"), "true");

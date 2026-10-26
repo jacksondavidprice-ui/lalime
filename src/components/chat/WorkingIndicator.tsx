@@ -49,7 +49,7 @@ export function WorkingIndicator({
         )}
       </AnimatePresence>
       <span role="status" aria-live="polite">
-      <AnimatePresence mode="wait" initial={false}>
+      {active ? <AnimatePresence mode="wait" initial={false}>
         <motion.span
           key={text}
           initial={{ opacity: 0, y: 6 }}
@@ -60,7 +60,7 @@ export function WorkingIndicator({
         >
           {text}
         </motion.span>
-      </AnimatePresence>
+      </AnimatePresence> : <span className={waiting ? "font-medium text-lime-deep" : "text-muted"}>{text}</span>}
       </span>
       {active && elapsed >= 10 && <span className="text-muted" data-testid="working-elapsed">{t("working.elapsed")} · {elapsed} {t("working.seconds")}</span>}
     </div>

@@ -129,7 +129,7 @@ async function main(): Promise<void> {
       try {
         await page.goto(BASE, { waitUntil: "networkidle", timeout: 15000 });
         await page.getByTestId("onboarding").waitFor();
-        await waitForOnboardingSlide(page, "Your computer, done for you.");
+        await waitForOnboardingSlide(page, "Help with your computer");
         await capture(page, "onboarding");
         await page.getByTestId("onboarding-next").click();
         await page.getByTestId("onboarding-next").click();
@@ -137,7 +137,7 @@ async function main(): Promise<void> {
         await page.getByTestId("sign-in-chatgpt").waitFor();
         await page.getByTestId("toggle-api-key").click();
         await page.getByTestId("api-key-input").waitFor();
-        await page.getByRole("heading", { name: "Use your own ChatGPT or API key." }).waitFor();
+        await page.getByRole("heading", { name: "Use your own ChatGPT or API key" }).waitFor();
         await page.waitForFunction(() => {
           const heading = document.querySelector('[data-testid="onboarding"] h1');
           return heading?.parentElement && getComputedStyle(heading.parentElement).opacity === "1";
@@ -154,7 +154,7 @@ async function main(): Promise<void> {
         page.setDefaultTimeout(5000);
         try {
           await page.goto(BASE, { waitUntil: "networkidle", timeout: 15000 });
-          const titles = ["Your computer, done for you.", "Nothing dangerous happens behind your back.", "Use your own ChatGPT or API key."];
+          const titles = ["Help with your computer", "You review risky steps", "Use your own ChatGPT or API key"];
           for (const [index, title] of titles.entries()) {
             await waitForOnboardingSlide(page, title);
             await page.getByRole("heading", { name: title, exact: true }).scrollIntoViewIfNeeded();

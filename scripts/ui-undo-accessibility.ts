@@ -85,7 +85,7 @@ try {
       await page.evaluate(value => (window as unknown as { undoA11y: Harness }).undoA11y.outcome(value as NonNullable<ActivityEntry["undoResult"]>), outcome);
       await row.getByTestId("undo-button").focus(); await page.keyboard.press("Enter");
       const role = outcome.status === "restored" ? "status" : "alert";
-      const text = outcome.status === "restored" ? "Restore verified" : "Could not restore this change.";
+      const text = outcome.status === "restored" ? "Restore verified" : "Could not restore this change. Review the result before trying again.";
       const result = row.getByRole(role).filter({ hasText: text }); await result.waitFor();
       await page.waitForFunction(({ role, text }) => document.activeElement?.isConnected && document.activeElement.getAttribute("role") === role && document.activeElement.textContent?.includes(text), { role, text }, { timeout: 2200 });
       assert(await result.evaluate(element => element === document.activeElement && element.isConnected));

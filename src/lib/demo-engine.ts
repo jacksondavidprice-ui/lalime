@@ -95,7 +95,7 @@ export class DemoEngine {
     this.patch({
       mode: "demo",
       auth: { state: "demo" },
-      statusText: "Demo mode — no ChatGPT sign-in needed",
+      statusText: "Demo mode: no ChatGPT sign-in needed",
     });
   }
 
@@ -165,7 +165,7 @@ export class DemoEngine {
       {
         id: id("m"),
         role: "assistant",
-        content: "All set — I put things back. Nothing permanent was lost.",
+        content: "I put things back. Nothing permanent was lost.",
         createdAt: Date.now(),
       },
     ];
@@ -286,7 +286,7 @@ export class DemoEngine {
             {
               id: id("m"),
               role: "assistant",
-              content: "Okay — I did not make that change.",
+              content: "I did not make that change.",
               createdAt: Date.now(),
             },
           ],
@@ -324,7 +324,7 @@ export class DemoEngine {
     ]);
 
     await this.assistant(
-      "I can tidy Downloads for you. I will sort obvious old installers and move them to the Recycle Bin — nothing is permanently deleted, and you can undo.",
+      "I will sort obvious old installers and move them to the Recycle Bin. Nothing is permanently deleted, and you can undo.",
     );
 
     this.updateStep("p1", "running");
@@ -473,7 +473,7 @@ export class DemoEngine {
         {
           id: id("m"),
           role: "assistant",
-          content: `${decision.plainEnglish}\n\nI am here to help — but never by breaking Windows.`,
+          content: decision.plainEnglish,
           createdAt: Date.now(),
         },
       ],

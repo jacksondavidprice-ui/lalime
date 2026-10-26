@@ -141,7 +141,7 @@ try {
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await behavior(page, "fail");
     await page.getByTestId("change-summary-current").getByRole("button", { name: "Undo", exact: true }).first().click();
-    await page.getByRole("alert").filter({ hasText: "Could not restore this change." }).waitFor();
+    await page.getByRole("alert").filter({ hasText: "Could not restore this change. Review the result before trying again." }).waitFor();
     await page.getByText("Show details", { exact: true }).click();
     await page.getByTestId("undo-details").getByText("Synthetic restore could not be verified", { exact: true }).waitFor();
     await publish(page, { activity: initial.activity.map((entry) => ({ ...entry, undone: true })) });
@@ -161,14 +161,14 @@ try {
   await check("resolved IPC without verified restore never claims success", async (page) => {
     await behavior(page, "silent");
     await page.getByTestId("change-summary-current").getByRole("button", { name: "Undo", exact: true }).first().click();
-    await page.getByText("The restore was not verified. Please try again.", { exact: true }).waitFor();
+    await page.getByText("The restore was not verified. Try again.", { exact: true }).waitFor();
     assert.equal(await page.getByText("Restore verified", { exact: true }).count(), 0);
   });
   await check("failed Undo all stops on first failure and allows retry", async (page) => {
     await behavior(page, "fail");
     const current = page.getByTestId("change-summary-current");
     await current.getByRole("button", { name: "Undo all available", exact: true }).click();
-    await current.getByRole("alert").filter({ hasText: "Could not restore this change." }).waitFor();
+    await current.getByRole("alert").filter({ hasText: "Could not restore this change. Review the result before trying again." }).waitFor();
     await current.getByText("Show details", { exact: true }).click();
     await current.getByTestId("undo-details").getByText("Synthetic restore could not be verified", { exact: true }).waitFor();
     assert.deepEqual(await calls(page), ["new2"]);
@@ -179,7 +179,7 @@ try {
   await check("rejected restore is visible and retryable", async (page) => {
     await behavior(page, "reject");
     await page.getByTestId("change-summary-current").getByRole("button", { name: "Undo", exact: true }).first().click();
-    await page.getByText("Could not restore this change.", { exact: true }).waitFor();
+    await page.getByText("Could not restore this change. Review the result before trying again.", { exact: true }).waitFor();
     await page.getByRole("button", { name: "Try Undo again", exact: true }).waitFor();
   });
   await check("Undo all is sequential and cancel stops remaining restores", async (page) => {

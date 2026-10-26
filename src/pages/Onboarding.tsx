@@ -85,7 +85,7 @@ export function Onboarding() {
       if (anthropicKey.trim()) {
         const r = await getApi().writerSetKey(anthropicKey);
         if (!r.ok) {
-          setWriterMsg(r.message ?? "Could not save that Anthropic key.");
+          setWriterMsg(r.message ?? "Could not save that Anthropic key. Try again.");
           return;
         }
       }

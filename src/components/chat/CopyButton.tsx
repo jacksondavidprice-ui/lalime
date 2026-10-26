@@ -29,7 +29,7 @@ export function CopyButton({ text }: { text: string }) {
         })();
       }}
       className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-muted transition-colors hover:bg-ink/5 hover:text-ink"
-      aria-label={copied ? "Copied" : failed ? "Copy failed. Try again." : "Copy reply"}
+      aria-label={copied ? "Copied" : failed ? "Copy failed, try again" : "Copy reply"}
       data-testid="copy-reply"
     >
       <span className="relative grid h-3.5 w-3.5 place-items-center">
@@ -46,7 +46,7 @@ export function CopyButton({ text }: { text: string }) {
           </motion.span>
         </AnimatePresence>
       </span>
-      <span aria-live="polite">{copied ? "Copied" : failed ? "Copy failed. Try again." : "Copy"}</span>
+      <span aria-live="polite">{copied ? "Copied" : failed ? "Copy failed, try again" : "Copy"}</span>
     </button>
   );
 }

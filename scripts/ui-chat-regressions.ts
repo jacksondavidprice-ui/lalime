@@ -96,7 +96,7 @@ async function main(): Promise<void> {
     await check("copy failure offers a visible retry", async (page) => {
       await page.evaluate(() => (window as unknown as { chatRegression: { failCopy(): void } }).chatRegression.failCopy());
       await page.getByTestId("copy-reply").last().click();
-      await page.getByRole("button", { name: "Copy failed. Try again.", exact: true }).waitFor();
+      await page.getByRole("button", { name: "Copy failed, try again", exact: true }).waitFor();
     });
     await check("growing the composer keeps the latest reply in view", async (page) => {
       const before = await metrics(page);

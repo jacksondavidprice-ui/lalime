@@ -32,7 +32,7 @@
     "facts": ["plain English", "clicks and fixes", "no menu hunting"]
   },
   "onboarding.guardian.title": {
-    "intent": "Reassure that dangerous actions need permission",
+    "intent": "Name the review required before risky steps",
     "facts": ["asks before risky steps", "blocks dangerous commands", "reports changes"]
   },
   "onboarding.guardian.body": {
@@ -222,7 +222,7 @@
   "approval.error": {
     "intent": "State this trust control clearly",
     "facts": [
-      "Your choice could not be sent. Please try again."
+      "Your choice could not be sent. Try again."
     ]
   },
   "approval.sending": {
@@ -306,7 +306,7 @@
   "blocked.error": {
     "intent": "State this trust control clearly",
     "facts": [
-      "That request could not be sent. Please try again."
+      "That request could not be sent. Try again."
     ]
   },
   "stop.label": {
@@ -336,7 +336,7 @@
   "stopped.title": {
     "intent": "State this trust control clearly",
     "facts": [
-      "Stopped. You are in control."
+      "Stopped"
     ]
   },
   "stopped.body": {
@@ -391,14 +391,14 @@
   "reply.speechError": {"intent":"Describe this control in plain language","facts":["Could not read this aloud. Try again."]},
   "reply.simpler": {"intent":"Describe this control in plain language","facts":["Say it simpler"]},
   "reply.simplerPrompt": {"intent":"Describe this control in plain language","facts":["Please explain this answer in simpler words, one step at a time:"]},
-  "reply.sendError": {"intent":"Describe this control in plain language","facts":["Could not send that message. Please try again."]},
+  "reply.sendError": {"intent":"Describe this control in plain language","facts":["Could not send that message. Try again."]},
   "followups.label": {"intent":"Describe this control in plain language","facts":["Keep going"]},
   "followups.explain": {"intent":"Describe this control in plain language","facts":["Explain this step by step"]},
   "followups.next": {"intent":"Describe this control in plain language","facts":["What can I try next?"]},
   "followups.check": {"intent":"Describe this control in plain language","facts":["How can I check the result?"]},
   "followups.activity": {"intent":"Describe this control in plain language","facts":["Explain the latest activity"]},
   "followups.activityPrompt": {"intent":"Describe this control in plain language","facts":["Please explain this activity in plain language:"]},
-  "boot.status": {"intent":"Describe this control in plain language","facts":["Getting things ready"]},
+  "boot.status": {"intent":"Describe this control in plain language","facts":["Starting Lalime"]},
   "approval.command": {"intent":"Describe this control in plain language","facts":["Exact command"]},
   "approval.payload": {"intent":"Describe this control in plain language","facts":["Exact action"]},
   "approval.expandPayload": {"intent":"Describe this control in plain language","facts":["Show full action"]},
@@ -419,11 +419,11 @@
   "approval.title.sysinfo": {"intent":"Describe this control in plain language","facts":["Read computer information?"]},
   "approval.queueUnknown": {"intent":"Describe this control in plain language","facts":["Reviewing one step at a time. More steps may need your approval."]},
   "about.title": {"intent":"Describe this control in plain language","facts":["About Lalime"]},
-  "about.author": {"intent":"Describe this control in plain language","facts":["Made by Jackson Price -- open source"]},
+  "about.author": {"intent":"Describe this control in plain language","facts":["Made by Jackson Price. Open source"]},
   "about.version": {"intent":"Describe this control in plain language","facts":["Version {version}"]},
   "about.license": {"intent":"Describe this control in plain language","facts":["MIT License"]},
   "about.source": {"intent":"Describe this control in plain language","facts":["View source on GitHub"]},
-  "about.body": {"intent":"Describe this control in plain language","facts":["Your computer, done for you, safely."]},
+  "about.body": {"intent":"Describe this control in plain language","facts":["Computer help in everyday words."]},
   "approval.allowTask": {"intent":"Explain this control and its limits","facts":["Allow for this task"]},
   "approval.allowScope": {"intent":"Explain this control and its limits","facts":["Lalime can repeat this exact step without asking until this task ends."]},
   "approval.holdUnavailable": {"intent":"Explain this control and its limits","facts":["This connection cannot prepare confirmation. Try again or choose Not now."]},
@@ -434,8 +434,8 @@
   "changes.undoAll": {"intent":"Explain this control and its limits","facts":["Undo all available"]},
   "changes.restoring": {"intent":"Explain this control and its limits","facts":["Restoring..."]},
   "changes.restored": {"intent":"Explain this control and its limits","facts":["Restore verified"]},
-  "changes.failed": {"intent":"Explain this control and its limits","facts":["Could not restore this change."]},
-  "changes.unverified": {"intent":"Explain this control and its limits","facts":["The restore was not verified. Please try again."]},
+  "changes.failed": {"intent":"Explain this control and its limits","facts":["Could not restore this change. Review the result before trying again."]},
+  "changes.unverified": {"intent":"Explain this control and its limits","facts":["The restore was not verified. Try again."]},
   "changes.retry": {"intent":"Explain this control and its limits","facts":["Try Undo again"]},
   "changes.noUndo": {"intent":"Explain this control and its limits","facts":["Undo is not available for this entry."]},
   "changes.wait": {"intent":"Explain this control and its limits","facts":["Finish or stop the current task before undoing changes."]},
@@ -451,7 +451,7 @@
   "approval.holdBulk": {"intent":"Explain approval state using host evidence","facts":["This moves {count} items. Press and hold to confirm."]},
   "approval.holdAfterBlock": {"intent":"Explain approval state using host evidence","facts":["Lalime blocked something risky earlier in this task, so the next changes need a press-and-hold."]},
   "approval.queueReview": {"intent":"Explain approval state using host evidence","facts":["Reviewing one step at a time"]},
-  "approval.queuePreview": {"intent":"Explain approval state using host evidence","facts":["The next steps will appear here one at a time, with their exact details before you decide."]},
+  "approval.queuePreview": {"intent":"Explain approval state using host evidence","facts":["You will review each step and its exact details before deciding."]},
   "approval.invalid": {"intent":"Explain approval state using host evidence","facts":["No longer valid"]},
   "approval.confirmed": {"intent":"Explain approval state using host evidence","facts":["Confirmed"]},
   "approval.allowCommandScope": {"intent":"Explain exact task allowance and how to revoke it","facts":["Lalime can run this exact command again without asking until this task ends."]},
@@ -482,7 +482,7 @@
   "changes.batchStopped": {"intent":"Explain why an Undo-all sequence paused at an incomplete restore","facts":["Undo all stopped here. Review this result before continuing."]},
   "empty.reassuranceTitle": {"intent":"Label first-use guidance","facts":["Before you begin"]},
   "empty.reassurance": {"intent":"Describe review and qualify Undo availability","facts":["You review important steps before they run. Look for Undo beside changes that Lalime can restore."]},
-  "empty.draftHint": {"intent":"Explain that suggestions prepare an editable draft","facts":["Choose an idea below to draft a message. You can edit it before sending."]},
+  "empty.draftHint": {"intent":"Explain that suggestions prepare an editable draft","facts":["Choose an idea to draft a message. Edit it before sending."]},
   "changes.recordOne": {"intent":"Count current activity without claiming task success","facts":["1 recorded step."]},
   "changes.recordCount": {"intent":"Count current activity without claiming task success","facts":["{count} recorded steps."]},
   "changes.undoCount": {"intent":"Count eligible Undo controls","facts":["Undo available for {count}."]},
@@ -495,5 +495,23 @@
   "changes.openFolder": {"intent":"Open the fixed host recovery folder","facts":["Open folder"]},
   "changes.openFolderFailed": {"intent":"Allow another attempt without leaking diagnostics","facts":["Could not open the recovery folder. Try again."]},
   "changes.details": {"intent":"Disclose full recovery diagnostics on request","facts":["Show details"]},
-  "changes.detailsLabel": {"intent":"Label the read-only recovery diagnostics","facts":["Undo details"]}
+  "changes.detailsLabel": {"intent":"Label the read-only recovery diagnostics","facts":["Undo details"]},
+  "connection.ready": {"intent":"Explain verified provider connection state and editable examples","facts":["Ready: try asking something"]},
+  "connection.failed": {"intent":"Explain verified provider connection state and editable examples","facts":["Connection needs attention"]},
+  "connection.checking": {"intent":"Explain verified provider connection state and editable examples","facts":["Checking your connection"]},
+  "connection.signedOut": {"intent":"Explain verified provider connection state and editable examples","facts":["Sign in to get started"]},
+  "connection.failureFallback": {"intent":"Explain verified provider connection state and editable examples","facts":["Could not reach the provider. Try again."]},
+  "connection.checkingHint": {"intent":"Explain verified provider connection state and editable examples","facts":["Waiting for your model to reply. If a sign-in page opened, finish there first."]},
+  "connection.unverified": {"intent":"Explain verified provider connection state and editable examples","facts":["You are signed in, but this connection has not been verified yet."]},
+  "connection.signInHint": {"intent":"Explain verified provider connection state and editable examples","facts":["Save and sign in. Lalime will check the connection before showing Ready."]},
+  "connection.account": {"intent":"Explain verified provider connection state and editable examples","facts":["Account:"]},
+  "connection.plan": {"intent":"Explain verified provider connection state and editable examples","facts":["Plan:"]},
+  "connection.model": {"intent":"Explain verified provider connection state and editable examples","facts":["Model:"]},
+  "connection.defaultModel": {"intent":"Explain verified provider connection state and editable examples","facts":["Provider default"]},
+  "connection.exampleHint": {"intent":"Explain verified provider connection state and editable examples","facts":["Choose an example to draft a message. Review it before sending."]},
+  "connection.wifi": {"intent":"Explain verified provider connection state and editable examples","facts":["My Wi-Fi keeps dropping"]},
+  "connection.printer": {"intent":"Explain verified provider connection state and editable examples","facts":["Printer says offline"]},
+  "connection.disk": {"intent":"Explain verified provider connection state and editable examples","facts":["Free up disk space"]},
+  "connection.unavailable": {"intent":"Explain verification is unavailable without saving an unfinished draft","facts":["This version cannot verify the connection yet. Use Save and sign in to reconnect."]},
+  "connection.retry": {"intent":"Explain verified provider connection state and editable examples","facts":["Retry"]}
 }

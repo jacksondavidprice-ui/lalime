@@ -24,8 +24,7 @@ export function PlanRail({
         {plan.length === 0 ? (
           <div className="mt-4 rounded-xl border border-dashed border-ink/15 bg-ink/[0.02] p-4">
             <ListChecks className="mb-3 h-5 w-5 text-muted" aria-hidden />
-            <p className="text-sm font-medium text-ink/80">A little help, step by step.</p>
-            <p className="mt-2 text-sm leading-relaxed text-muted">Steps will show up here when Lalime is working.</p>
+            <p className="mt-2 text-sm leading-relaxed text-muted">Steps appear when Lalime starts a task.</p>
           </div>
         ) : (
           <ol className="mt-4 space-y-3">
@@ -47,7 +46,7 @@ export function PlanRail({
           <History className="h-3.5 w-3.5 text-muted" aria-hidden />
         </div>
         {activity.length === 0 ? (
-          <p className="mt-4 text-sm leading-relaxed text-muted">Nothing changed yet.<br />You can follow the work here.</p>
+          <p className="mt-4 text-sm leading-relaxed text-muted">No changes yet.</p>
         ) : (
           <ul className="mt-4 space-y-3">
             {activity.map((entry) => (
@@ -70,7 +69,7 @@ export function PlanRail({
       <TaskGrants />
       <div className="mt-auto rounded-xl border border-lime/15 bg-lime/[0.035] p-4">
         <div className="flex items-center gap-2 text-sm font-semibold text-ink/90"><ShieldCheck className="h-4 w-4 text-lime" aria-hidden /> Guardian</div>
-        <p className="mt-2 text-xs leading-relaxed text-muted">You stay in control. Lalime asks before anything risky.</p>
+        <p className="mt-2 text-xs leading-relaxed text-muted">Lalime asks before anything risky.</p>
       </div>
     </aside>
   );

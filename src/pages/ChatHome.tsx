@@ -16,45 +16,29 @@ import { ChangeSummary } from "../components/ChangeSummary";
 import { copy, t } from "../copy";
 import { useAppStore } from "../lib/store";
 import { getApi } from "../lib/bridge";
+import { connectionFromSnapshot, connectionLabel } from "../lib/connection";
 import { RichText } from "../components/chat/RichText";
 import { WorkingIndicator } from "../components/chat/WorkingIndicator";
 import { JumpToLatest } from "../components/chat/JumpToLatest";
 import { CopyButton } from "../components/chat/CopyButton";
 import { ReadAloudButton, stopReadAloud } from "../components/chat/ReadAloudButton";
+import { RepairChecklist } from "../components/chat/RepairChecklist";
 import { StepTimeline } from "../components/chat/StepTimeline";
 import { FollowUps } from "../components/chat/FollowUps";
 import { useStickToBottom } from "../components/chat/useStickToBottom";
 import { useAutoGrow } from "../components/chat/useAutoGrow";
 
 const SUGGESTIONS = [
-  { prompt: copy["chips.downloads"], title: "Clear the clutter", icon: FolderOpen },
-  { prompt: copy["chips.forms"], title: "Get the details right", icon: ListChecks },
-  { prompt: copy["chips.programs"], title: "A hand with your apps", icon: LayoutGrid },
-  { prompt: copy["chips.wifi"], title: "Fix a little frustration", icon: Wifi },
+  { prompt: copy["chips.downloads"], title: "Downloads", icon: FolderOpen },
+  { prompt: copy["chips.forms"], title: "Forms", icon: ListChecks },
+  { prompt: copy["chips.programs"], title: "Apps", icon: LayoutGrid },
+  { prompt: copy["chips.wifi"], title: "Wi-Fi", icon: Wifi },
 ];
-
-function authLabel(auth: ReturnType<typeof useAppStore.getState>["auth"]): string {
-  switch (auth.state) {
-    case "signed_in":
-      return auth.method === "chatgpt" ? "ChatGPT" : auth.method === "local" ? "Local model" : "API key";
-    case "signing_in":
-      return "Signing in";
-    case "demo":
-      return "Dev fixture";
-    case "error":
-      return "Sign in";
-    case "signed_out":
-      return "Sign in";
-    default: {
-      const _exhaustive: never = auth;
-      return _exhaustive;
-    }
-  }
-}
 
 export function ChatHome() {
   const messages = useAppStore((s) => s.messages);
   const plan = useAppStore((s) => s.plan);
+  const repairPlan = useAppStore((s) => s.repairPlan);
   const activity = useAppStore((s) => s.activity);
   const pendingApproval = useAppStore((s) => s.pendingApproval);
   const pendingApprovalCount = useAppStore((s) => s.pendingApprovalCount);
@@ -64,6 +48,8 @@ export function ChatHome() {
   const stopped = useAppStore((s) => s.stopped);
   const statusText = useAppStore((s) => s.statusText);
   const auth = useAppStore((s) => s.auth);
+  const connection = useAppStore(connectionFromSnapshot);
+  const connectionState = connectionLabel(auth, running, connection);
   const hands = useAppStore((s) => s.hands);
   const writer = useAppStore((s) => s.writer);
 
@@ -85,7 +71,7 @@ export function ChatHome() {
   const canFollowUp = signedIn && !running && !pendingApproval && !sending;
   const lastRequest = latestUserIndex >= 0 ? messages[latestUserIndex].content : "";
   const canRecall = canFollowUp && text.length === 0 && lastRequest.length > 0;
-  const hasConversation = messages.length > 0 || !!pendingApproval || !!blockedNotice || stopped || running || plan.length > 0 || activity.length > 0;
+  const hasConversation = messages.length > 0 || !!pendingApproval || !!blockedNotice || stopped || running || !!repairPlan || plan.length > 0 || activity.length > 0;
   const { ref: scrollRef, atBottom, unseen, scrollToBottom } = useStickToBottom<HTMLDivElement>(hasConversation && !pendingApproval);
   const inputRef = useAutoGrow(text);
   // Messages already on screen when the chat opens don't replay their entrance.
@@ -161,14 +147,14 @@ export function ChatHome() {
       <div className="mx-auto flex h-full w-full max-w-[1600px] flex-1">
         <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           <header className="flex shrink-0 items-center justify-between gap-3 border-b border-line px-5 py-4 md:px-8">
-            <div className="flex items-center gap-5"><Logo size="sm" /><span className="hidden border-l border-line pl-5 text-xs text-muted xl:inline">Your everyday assistant</span></div>
-            <div className="flex items-center gap-2 sm:gap-3">
-              <span
-                className="hidden items-center gap-2 rounded-full border border-line bg-surface/50 px-3 py-1.5 text-xs text-muted sm:inline-flex"
-                data-testid="mode-badge"
-              >
-                <span className={`h-1.5 w-1.5 rounded-full ${signedIn ? "bg-lime" : "bg-mist"}`} aria-hidden />{authLabel(auth)}
+            <div className="flex shrink-0 flex-col items-start gap-1.5 sm:flex-row sm:items-center sm:gap-4"><Logo size="sm" />
+              <span data-testid="connection-status" role="status" aria-live="polite" aria-label={"Connection: " + connectionState}
+                className="inline-flex h-6 w-24 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-line bg-surface/50 text-[11px] text-muted">
+                <span className={"h-1.5 w-1.5 shrink-0 rounded-full " + (connectionState === "Ready" ? "bg-lime" : connectionState === "Problem" ? "bg-amber-300" : "bg-mist")} aria-hidden />{connectionState}
               </span>
+            </div>
+            <div className="flex items-center gap-2 sm:gap-3">
+
               <StopButton visible={running || !!pendingApproval} />
               <button
                 type="button"
@@ -222,7 +208,7 @@ export function ChatHome() {
                 />
               )}
 
-              {signedIn && messages.length === 0 && !pendingApproval && !blockedNotice && !stopped && !running && plan.length === 0 && activity.length === 0 && (
+              {signedIn && messages.length === 0 && !pendingApproval && !blockedNotice && !stopped && !running && !repairPlan && plan.length === 0 && activity.length === 0 && (
                 <EmptyState
                   onPick={(s) => {
                     setText(s);
@@ -265,7 +251,7 @@ export function ChatHome() {
                           <ReadAloudButton text={m.content} stopped={stopped} />
                           <button type="button" disabled={!canFollowUp} onClick={() => void send(`${t("reply.simplerPrompt")}\n\n${m.content}`)} className="inline-flex min-h-9 items-center rounded-lg px-2 text-xs text-muted transition enabled:hover:bg-ink/5 enabled:hover:text-ink disabled:opacity-45">{t("reply.simpler")}</button>
                         </div>
-                        {index === currentAnswerIndex && <StepTimeline plan={plan} />}
+                        {index === currentAnswerIndex && (repairPlan ? <RepairChecklist plan={repairPlan} /> : <StepTimeline plan={plan} />)}
                         {index === currentAnswerIndex && canFollowUp && !stopped && !blockedNotice && <FollowUps activity={activity[0]} onPick={pickFollowUp} />}
                       </>
                     ) : (
@@ -275,7 +261,7 @@ export function ChatHome() {
                 </motion.div>
               ))}
 
-              {currentAnswerIndex < 0 && <StepTimeline plan={plan} />}
+              {currentAnswerIndex < 0 && (repairPlan ? <RepairChecklist plan={repairPlan} /> : <StepTimeline plan={plan} />)}
               <ChangeSummary />
 
               <AnimatePresence>
@@ -293,7 +279,7 @@ export function ChatHome() {
             </div>
 
             <div className="mb-2.5">
-              <WorkingIndicator running={running} waiting={!!pendingApproval} text={statusText} />
+              <WorkingIndicator running={running} waiting={!!pendingApproval} text={statusText === "Ready" && connectionState !== "Ready" ? connectionState : statusText} />
             </div>
             {sendError && <p role="alert" className="mb-2 text-sm text-danger">{t("reply.sendError")}</p>}
 
@@ -370,7 +356,7 @@ export function ChatHome() {
         {settingsOpen && (
           <Modal label="Settings" onClose={() => setSettingsOpen(false)} testId="settings-modal">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div><p className="eyebrow mb-2">Make yourself at home</p><h2 className="font-display text-2xl font-bold tracking-tight text-ink">Settings</h2></div>
+                <div><h2 className="font-display text-2xl font-bold tracking-tight text-ink">Settings</h2></div>
                 <div className="ml-auto flex items-center gap-3">
                 <StopButton visible={running || !!pendingApproval} />
                 <button
@@ -383,7 +369,10 @@ export function ChatHome() {
                 </button>
                 </div>
               </div>
-              <ProviderSettings />
+              <ProviderSettings onPick={(prompt) => {
+                setText(prompt); setSettingsOpen(false);
+                requestAnimationFrame(() => { inputRef.current?.focus(); inputRef.current?.setSelectionRange(prompt.length, prompt.length); });
+              }} />
                 {settingsMsg && (
                   <p className="whitespace-pre-wrap text-sm text-ink/60" data-testid="settings-msg">
                     {settingsMsg}
@@ -438,7 +427,7 @@ export function ChatHome() {
                         const r = await getApi().writerSetKey(anthropicKey);
                         setBusy(false);
                         setWriterMsg(
-                          r.ok ? t("settings.writerSaved") : (r.message ?? "Could not save that key."),
+                          r.ok ? t("settings.writerSaved") : (r.message ?? "Could not save that key. Try again."),
                         );
                         if (r.ok) setAnthropicKey("");
                       })();
@@ -457,7 +446,7 @@ export function ChatHome() {
                         setBusy(true);
                         const r = await getApi().writerCheckKey();
                         setBusy(false);
-                        setWriterMsg(r.ok ? t("settings.writerCheckOk") : (r.message ?? "Check failed."));
+                        setWriterMsg(r.ok ? t("settings.writerCheckOk") : (r.message ?? "Could not check that key. Try again."));
                       })();
                     }}
                     data-testid="settings-writer-check"
@@ -506,7 +495,6 @@ function SignInGate({
 }) {
   return (
     <div className="flex min-h-full flex-col justify-center py-10" data-testid="sign-in-gate">
-      <span className="eyebrow mb-5 flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-lime" />A little help goes a long way</span>
       <motion.h1
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -550,7 +538,6 @@ function SignInGate({
 function EmptyState({ onPick }: { onPick: (s: string) => void }) {
   return (
     <div className="flex min-h-full flex-col justify-center py-3" data-testid="empty-state">
-      <div className="eyebrow mb-5 flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-lime" aria-hidden />A little help goes a long way</div>
       <motion.h1
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -570,7 +557,7 @@ function EmptyState({ onPick }: { onPick: (s: string) => void }) {
           <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-lime" aria-hidden />
           <div><p>{t("empty.reassurance")}</p><p className="mt-2 text-muted">{t("empty.draftHint")}</p></div>
         </section>
-      <p className="eyebrow mb-3 mt-7">A few places to start</p>
+      <p className="eyebrow mb-3 mt-7">Try a task</p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {SUGGESTIONS.map(({ prompt, title, icon: Icon }, i) => (
           <motion.button

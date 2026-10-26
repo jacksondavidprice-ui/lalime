@@ -115,7 +115,7 @@ try {
   });
   for (const [name, outcome, expected] of [
     ["counted", { status: "failed", restored: 2, total: 3, reason: "A newer file has that name, so it was left alone." }, "Partly undone: 2 of 3 items are back."],
-    ["without counts", { status: "failed", reason: "Review the remaining items." }, "Could not restore this change."],
+    ["without counts", { status: "failed", reason: "Review the remaining items." }, "Could not restore this change. Review the result before trying again."],
   ] as const) {
     await check("batch9 partial Undo " + name + " is clear and focused", async page => {
       await page.evaluate(value => (window as unknown as {withdrawalFixture:Harness}).withdrawalFixture.outcome(value as unknown as ActivityEntry["undoResult"]), outcome);
@@ -129,9 +129,9 @@ try {
     });
   }
   for (const [kind, outcome, expected] of [
-    ["failed", { status: "failed", reason: "The file could not be restored. Try Undo again." }, "Could not restore this change."],
-    ["rejected", "reject", "Could not restore this change."],
-    ["unverified", "silent", "The restore was not verified. Please try again."],
+    ["failed", { status: "failed", reason: "The file could not be restored. Try Undo again." }, "Could not restore this change. Review the result before trying again."],
+    ["rejected", "reject", "Could not restore this change. Review the result before trying again."],
+    ["unverified", "silent", "The restore was not verified. Try again."],
   ] as const) {
     await check("batch9 keyboard focus explains " + kind + " Undo", async (page) => {
       await page.evaluate(value => (window as unknown as { withdrawalFixture: Harness }).withdrawalFixture.outcome(value), outcome);
@@ -261,7 +261,7 @@ try {
   await check("withdrawal stays separate from restore failure and describes the next state", async (page) => {
     await publish(page, { activity: withNotice().map((entry) => entry.id === "affected" ? { ...entry, undoResult: { status: "failed", reason: "Sample restore failed." } } : entry) });
     await receipt(page).waitFor();
-    await page.getByTestId("change-summary").getByRole("alert").filter({ hasText: "Could not restore this change." }).waitFor();
+    await page.getByTestId("change-summary").getByRole("alert").filter({ hasText: "Could not restore this change. Review the result before trying again." }).waitFor();
     assert.equal(await page.getByTestId("change-summary").getByText("Restore verified", { exact: true }).count(), 0);
     for (const [patch, next] of [
       [{ pendingApproval: pending, pendingApprovalCount: 1, running: false }, "Another step is waiting for your approval."],

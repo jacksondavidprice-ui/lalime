@@ -1,5 +1,7 @@
 import { create } from "zustand";
 import type { AppSnapshot } from "@shared/types";
+import type { ConnectionCheck } from "@shared/connection";
+import { connectionFromSnapshot } from "./connection";
 import { getApi } from "./bridge";
 
 const empty: AppSnapshot = {
@@ -19,6 +21,7 @@ const empty: AppSnapshot = {
 };
 
 interface AppState extends AppSnapshot {
+  connection?: ConnectionCheck;
   ready: boolean;
   hydrate: () => Promise<void>;
 }
@@ -29,7 +32,7 @@ export const useAppStore = create<AppState>((set) => ({
   hydrate: async () => {
     const api = getApi();
     const snap = await api.getSnapshot();
-    set({ ...snap, ready: true });
-    api.subscribe((next) => set({ ...next, ready: true }));
+    set({ ...snap, connection: connectionFromSnapshot(snap), repairPlan: snap.repairPlan, ready: true });
+    api.subscribe((next) => set({ ...next, connection: connectionFromSnapshot(next), repairPlan: next.repairPlan, ready: true }));
   },
 }));

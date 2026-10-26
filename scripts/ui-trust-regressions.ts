@@ -400,7 +400,7 @@ async function main() {
     await check("batch3 queue overview is keyboard accessible and honest", { pendingApprovalCount:4 }, async(p)=>{
       const toggle=p.getByRole("button",{name:"3 more waiting",exact:true}); await toggle.focus(); await p.keyboard.press("Enter");
       assert.equal(await toggle.getAttribute("aria-expanded"),"true");
-      await p.getByText("The next steps will appear here one at a time, with their exact details before you decide.",{exact:true}).waitFor();
+      await p.getByText("You will review each step and its exact details before deciding.",{exact:true}).waitFor();
       assert.deepEqual(await calls(p),[]);
       await p.screenshot({path:"artifacts/screenshots/batch3-queue-mobile.png"});
       await p.keyboard.press("Enter");
@@ -527,7 +527,7 @@ async function main() {
     await check("about panel identifies the author license and source", { pendingApproval: null, running: false }, async (p) => {
       await p.getByTestId("settings-button").click();
       const panel = p.getByTestId("about-panel"); await panel.waitFor();
-      await panel.getByText("Made by Jackson Price -- open source", { exact: true }).waitFor();
+      await panel.getByText("Made by Jackson Price. Open source", { exact: true }).waitFor();
       await panel.getByText("MIT License", { exact: true }).waitFor();
       assert.equal(await panel.getByRole("link", { name: "View source on GitHub" }).getAttribute("href"), "https://github.com/jacksondavidprice-ui/lalime");
     });

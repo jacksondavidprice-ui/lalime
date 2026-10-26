@@ -1,3 +1,4 @@
+// Oct 26: plain UI clicks are tier 1, so these fixtures click a consequential control to get a card.
 import { EventEmitter } from "node:events";
 import { afterEach, expect, it, vi } from "vitest";
 import { LiveAgentHost } from "../electron/main/live-agent.js";
@@ -33,7 +34,7 @@ async function fixture() {
       itemId: "file-1", changes: [{ path: "C:\\Users\\Test\\Documents\\note.txt" }],
     });
     if (kind === "tool") send(1, "item/tool/call", {
-      tool: "lalime_click", arguments: { name: "Save", windowTitle: "Editor" },
+      tool: "lalime_click", arguments: { name: "Delete", windowTitle: "Editor" },
     });
     await flush();
     expect(cards).toHaveLength(1);

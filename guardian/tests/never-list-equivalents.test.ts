@@ -16,10 +16,6 @@ function decide(payload: string) {
 }
 
 const BLOCKED_EQUIVALENTS: Array<[string, string]> = [
-  ["defender splat", "$p=@{DisableRealtimeMonitoring=$true}; Set-MpPreference @p"],
-  ["defender .Stop()", "(Get-Service WinDefend).Stop()"],
-  ["defender CIM", "Get-CimInstance Win32_Service -Filter \"Name='WinDefend'\" | Invoke-CimMethod -MethodName StopService"],
-  ["defender sc.exe", "sc.exe stop WinDefend"],
   ["drivers $_.Delete()", "Get-ChildItem C:\\Windows\\System32\\drivers\\*.sys | ForEach-Object { $_.Delete() }"],
   ["drivers IO.File", "[System.IO.File]::Delete('C:\\Windows\\System32\\drivers\\e1000.sys')"],
   ["windows IO.Directory recursive", "[System.IO.Directory]::Delete('C:\\Windows\\SysWOW64', $true)"],
@@ -50,20 +46,26 @@ describe("never-list equivalent spellings (finding 01)", () => {
   // lalime-overseer/for-jackson/never-list-bypass.md). These document the
   // bypass; `it.fails` passes while the bypass exists and turns red once a
   // never-list change closes it, so remove `.fails` then.
-  // Box youtube finding 03: Defender variants that need a new never-list rule (Jackson).
-  it.fails.each([
+  // Jackson, Oct 26: Defender changes are an ask (tier 3 hold), not a block.
+  it.each([
+    "$p=@{DisableRealtimeMonitoring=$true}; Set-MpPreference @p",
+    "(Get-Service WinDefend).Stop()",
+    "Get-CimInstance Win32_Service -Filter \"Name='WinDefend'\" | Invoke-CimMethod -MethodName StopService",
+    "sc.exe stop WinDefend",
     "Suspend-Service WinDefend",
     "Set-MpPreference -DisableRealtimeMonitoring 1",
     "Set-MpPreference -DisableRealtimeMonitoring:$true",
     "Set-MpPreference -drtm $true",
-  ])("blocks Defender variant %s (Jackson decision)", (payload) => {
-    expect(decide(payload).kind).toBe("block");
+    "Stop-Process -Name MsMpEng -Force",
+  ])("asks before Defender change %s", (payload) => {
+    const d = decide(payload);
+    expect(d.kind).toBe("ask_hold");
+    expect(d.matchedRules).toContain("ask.defender.change");
+    expect(d.undoable).toBe(false);
+    expect(d.plainEnglish).toMatch(/stays off until you turn it back on/);
   });
   it.fails("blocks pnputil driver-store delete (Jackson decision)", () => {
     expect(decide("pnputil /delete-driver oem1.inf /uninstall /force").kind).toBe("block");
-  });
-  it.fails("blocks Stop-Process on the Defender engine (Jackson decision)", () => {
-    expect(decide("Stop-Process -Name MsMpEng -Force").kind).toBe("block");
   });
   it.fails("blocks recursive .NET delete of a whole user profile folder (Jackson decision)", () => {
     expect(decide("[System.IO.Directory]::Delete('C:\\Users\\User\\Documents', $true)").kind).toBe("block");

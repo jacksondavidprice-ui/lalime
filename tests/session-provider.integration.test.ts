@@ -31,7 +31,7 @@ describe("complete session over a local HTTP provider", () => {
       }
       requests.push(parsedBody);
       const message = requests.length === 1
-        ? { role: "assistant", content: null, tool_calls: [{ id: "tool-1", type: "function", function: { name: "lalime_open_settings", arguments: JSON.stringify({ uri: "ms-settings:display" }) } }] }
+        ? { role: "assistant", content: null, tool_calls: [{ id: "tool-1", type: "function", function: { name: "lalime_click", arguments: JSON.stringify({ name: "Uninstall", windowTitle: "Apps" }) } }] }
         : { role: "assistant", content: requests.length === 2 ? "Display settings are open." : "We opened Display settings." };
       response.writeHead(200, { "content-type": "application/json" });
       response.end(JSON.stringify({ choices: [{ message, finish_reason: "stop" }] }));
@@ -39,7 +39,8 @@ describe("complete session over a local HTTP provider", () => {
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const address = server.address() as { port: number };
     const hands = new MockHands();
-    const open = vi.spyOn(hands, "openSettings");
+    // Plain Settings pages are tier 1 since Oct 26, so this uses a consequential click to get a card.
+    const open = vi.spyOn(hands, "clickElement");
     controller = new SessionController(hands);
     expect(controller.updateSettings({ providerId: "custom", model: "test-model", baseUrl: `http://127.0.0.1:${address.port}/v1`, allowComputerControl: true }).ok).toBe(true);
     expect((await controller.connectProvider()).ok).toBe(true);
@@ -51,7 +52,7 @@ describe("complete session over a local HTTP provider", () => {
     expect(open).not.toHaveBeenCalled();
     await controller.respondApproval("do_it", approval.action.id);
     await vi.waitFor(() => expect(controller.getSnapshot().running).toBe(false));
-    expect(open).toHaveBeenCalledExactlyOnceWith("ms-settings:display");
+    expect(open).toHaveBeenCalledExactlyOnceWith("Uninstall", "Apps");
     expect(controller.getSnapshot().messages.at(-1)?.content).toBe("Display settings are open.");
     await controller.sendMessage("What did we do?");
     await vi.waitFor(() => expect(controller.getSnapshot().running).toBe(false));

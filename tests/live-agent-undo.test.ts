@@ -1,3 +1,4 @@
+// Oct 26: plain UI clicks are tier 1, so these fixtures click a consequential control to get a card.
 import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 import { LiveAgentHost } from "../electron/main/live-agent.js";
@@ -29,8 +30,7 @@ describe("truthful undo availability", () => {
   it.each([
     ["item/commandExecution/requestApproval", { command: "Get-Date" }],
     ["item/fileChange/requestApproval", { reason: "Change a file" }],
-    ["item/tool/call", { tool: "lalime_open_settings", arguments: { uri: "ms-settings:display" } }],
-    ["item/tool/call", { tool: "lalime_click", arguments: { name: "Apply", windowTitle: "Editor" } }],
+    ["item/tool/call", { tool: "lalime_click", arguments: { name: "Reset", windowTitle: "Editor" } }],
     ["item/tool/call", { tool: "lalime_recycle", arguments: { paths: ["C:\\Users\\Demo\\Downloads\\file.txt"] } }],
   ])("does not promise undo in a %s approval without a restore token", async (method, params) => {
     const f = await setup();
@@ -47,8 +47,8 @@ describe("truthful undo availability", () => {
     const f = await setup();
     f.client.emit("serverRequest", { id: 1, method, params });
     await flush();
-    f.host.respondApproval("do_it", f.cards[0].action.id);
-    await flush();
+    // Opening Settings is tier 1 (Jackson, Oct 26): it runs without a card.
+    expect(f.cards).toHaveLength(0);
     expect(f.activity.mock.calls[0][0].undoable).toBe(false);
     await f.host.stop();
   });

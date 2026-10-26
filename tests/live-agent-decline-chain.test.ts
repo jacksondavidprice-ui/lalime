@@ -116,12 +116,13 @@ it.each([false, true])("asks again for an identical declined command with a new 
   await f.decline(secondCard, 2);
 });
 
-it.each([false, true])("keeps one literal Desktop notes file at tier two (delayed precheck: %s)", async (delayed) => {
+// Oct 26 (Jackson, "ask before delete"): a permanent delete is a tier-3 hold, even for one file.
+it.each([false, true])("holds one literal Desktop notes file at tier three (delayed precheck: %s)", async (delayed) => {
   const f = await fixture();
   const approval = f.card();
   f.command(1, "Remove-Item -LiteralPath 'C:\\Users\\Fixture\\Desktop\\notes.txt'", delayed)();
   const pending = await approval;
-  expect(pending.decision).toMatchObject({ kind: "ask", tier: 2 });
+  expect(pending.decision).toMatchObject({ kind: "ask_hold", tier: 3, undoable: false });
   expect(pending.action.payload).toContain("Desktop\\notes.txt");
   expect(f.client.respondApproval).not.toHaveBeenCalled();
   await f.decline(pending, 1);
@@ -133,7 +134,7 @@ async function checkPoisonChain(delayed: boolean, checkDesktop = false) {
     const desktop = f.card();
     f.command(10, "Remove-Item -LiteralPath 'C:\\Users\\Fixture\\Desktop\\notes.txt'", delayed)();
     const pending = await desktop;
-    expect(pending.decision).toMatchObject({ kind: "ask", tier: 2 });
+    expect(pending.decision).toMatchObject({ kind: "ask_hold", tier: 3, undoable: false });
     await f.decline(pending, 10);
   }
   const recycle = vi.spyOn(f.hands, "moveToRecycleBin");

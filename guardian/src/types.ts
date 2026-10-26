@@ -46,6 +46,9 @@ export interface AskRule {
   patterns: RegExp[];
   kinds?: ActionKind[] | "*";
   undoable?: boolean;
+  /** Skip the canonical words Guardian prepends while de-obfuscating, so a
+   * delete named only in a comment or string does not count as a command. */
+  commandTextOnly?: boolean;
 }
 
 export interface ReviewerInput {

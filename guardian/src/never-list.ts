@@ -45,12 +45,12 @@ export const NEVER_RULES: NeverRule[] = [
   },
   {
     id: "never.defender.disable",
-    description: "Disable Windows Defender / firewall / UAC / Update",
+    // Defender itself moved to ask.defender.change (Jackson, Oct 26:
+    // "Ms Defender isn't that deep, we can allow the app to mess with that").
+    description: "Disable firewall / UAC / Windows Update",
     plainEnglish:
-      "Lalime will not turn off your antivirus, firewall, or Windows Update. Those keep you safe.",
+      "Lalime will not turn off your firewall, Windows security prompts (UAC), or Windows Update. Those keep you safe.",
     patterns: [
-      /\bset-mppreference\b.*(-disablerealtimemonitoring\s+\$true|disableioavprotection)/i,
-      /\bstop-service\b.*windefend/i,
       /\bset-netfirewallprofile\b.*-enabled\s+(false|0)/i,
       /\bnetsh\s+advfirewall\s+set\b.*off/i,
       /\bSet-ItemProperty\b.*EnableLUA.*0/i,
@@ -128,9 +128,18 @@ export const NEVER_RULES: NeverRule[] = [
     plainEnglish:
       "Lalime will not delete Windows system files. That would break your computer.",
     patterns: [
-      /\b(remove-item|rm|del|rmdir|rd)\b[^\n]*(\\windows\\system32|\\windows\\syswow64|\\windows\\winsxs)/i,
-      /\b(remove-item|rm)\b[^\n]*-recurse[^\n]*(\\windows|\/windows)/i,
+      // Narrow exception (Jackson, Oct 26): print-queue job files
+      // (System32\spool\PRINTERS\<name>.SPL / .SHD) are not system files.
+      // Deleting them is ask.print.spool.clear instead of this hard block.
+      /\b(remove-item|rm|del|erase|rmdir|rd)\b[^\n]*(\\windows\\system32(?!\\spool\\printers\\[a-z0-9_*?-]+\.(?:spl|shd)(?![\w\\/.*?]))|\\windows\\syswow64|\\windows\\winsxs)/i,
+      /\b(remove-item|rm)\b[^\n]*-recurse[^\n]*(\\windows(?!\\system32\\spool\\printers\\[a-z0-9_*?-]+\.(?:spl|shd)(?![\w\\/.*?]))|\/windows)/i,
       /\bdelete\s+everything\s+in\s+system32\b/i,
+      // Moving or renaming system files breaks Windows the same way deleting
+      // them does (Jackson, Oct 26: "Treat a move as destructive with system files").
+      /\b(move-item|mv|move|mi|rename-item|ren|rename|rni)\b[^\n]*(\\windows\\system32|\\windows\\syswow64|\\windows\\winsxs)/i,
+      /\[(system\.)?io\.(file|directory)\]::(move|replace)\b[^\n]*(\\windows\\system32|\\windows\\syswow64|\\windows\\winsxs)/i,
+      /\brobocopy\b(?=[^\n]*\\windows\\(system32|syswow64|winsxs))(?=[^\n]*\s\/(move|mov|mir|purge)\b)/i,
+      /\bxcopy\b[^\n]*\\windows\\(system32|syswow64|winsxs)/i,
     ],
   },
   {

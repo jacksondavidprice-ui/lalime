@@ -115,9 +115,10 @@ export function canonicalWindowsPaths(text: string): string {
 }
 
 /** Strip common PowerShell obfuscation wrappers for a second pass. */
-export function deobfuscateLite(text: string): string {
-  const canon = canonicalEquivalents(text);
-  const paths = canonicalWindowsPaths(text);
+export function deobfuscateLite(text: string, options: { prefix?: boolean } = {}): string {
+  const withPrefix = options.prefix !== false;
+  const canon = withPrefix ? canonicalEquivalents(text) : "";
+  const paths = withPrefix ? canonicalWindowsPaths(text) : "";
   return (canon ? `${canon} ` : "") + (paths ? `${paths}\n` : "") + text
     .replace(/`/g, "")
     .replace(/\$env:comspec/gi, "cmd")

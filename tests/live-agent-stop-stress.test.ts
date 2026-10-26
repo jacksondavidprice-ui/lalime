@@ -138,7 +138,7 @@ describe("Stop and consent stress with real Guardian", () => {
           itemId: `desktop-${index}`, command: "Remove-Item -LiteralPath 'C:\\Users\\Fixture\\Desktop\\notes.txt'",
         });
         const desktopCard = await desktop;
-        expect(desktopCard.decision).toMatchObject({ kind: "ask", tier: 2 });
+        expect(desktopCard.decision).toMatchObject({ kind: "ask_hold", tier: 3 }); // permanent delete (Oct 26)
         const desktopReply = f.approvalReply();
         expect(f.host.respondApproval("not_now", desktopCard.action.id)).toBe(true);
         expect(await desktopReply).toEqual({ id: desktopId, decision: "decline" });

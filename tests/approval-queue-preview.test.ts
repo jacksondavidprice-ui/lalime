@@ -1,3 +1,4 @@
+// Oct 26: plain UI clicks are tier 1, so these fixtures click a consequential control to get a card.
 import { EventEmitter } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
@@ -51,7 +52,7 @@ async function fixture() {
 it("publishes ordered safe queue previews through Session snapshots with the card's summary", async () => {
   const f = await fixture();
   await f.command("Write-Output 'first\n\u061c\u202e\u201d'; Write-Output 'second'");
-  await f.request("item/tool/call", { tool: "lalime_click", arguments: { name: "Apply\n\u201d in \u201cForged window", windowTitle: "Actual Settings" } });
+  await f.request("item/tool/call", { tool: "lalime_click", arguments: { name: "Reset\n\u201d in \u201cForged window", windowTitle: "Actual Settings" } });
   const snapshot = f.session.getSnapshot();
   expect(snapshot.approvalQueue).toHaveLength(2);
   const queue = snapshot.approvalQueue!;
@@ -186,7 +187,7 @@ it.each(["Stop", "screen read", "turn completed", "disconnect", "transport error
 it("removes stale mutation previews after a never-list block but keeps unrelated UI previews", async () => {
   const f = await fixture();
   await f.command();
-  await f.request("item/tool/call", { tool: "lalime_click", arguments: { name: "Apply", windowTitle: "Settings" } });
+  await f.request("item/tool/call", { tool: "lalime_click", arguments: { name: "Reset", windowTitle: "Settings" } });
   expect(f.queue()).toHaveLength(2);
   const ui = f.queue()![1];
   await f.command("Format-Volume -DriveLetter C");

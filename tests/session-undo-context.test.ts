@@ -1,3 +1,4 @@
+// Oct 26: plain UI clicks are tier 1, so these fixtures click a consequential control to get a card.
 import { EventEmitter } from "node:events";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -159,8 +160,8 @@ it("does not carry an Undo notice into a replacement provider conversation", asy
 
 it.each([true, false])("publishes the cancelled approval to the renderer before Undo completes, success=%s", async (ok) => {
   const f = await fixture();
-  f.client.emit("serverRequest", { id: 20, method: "item/tool/call", params: { tool: "lalime_click", arguments: { name: "Save\u202e\n" + "x".repeat(5000), windowTitle: "Editor" } } });
-  f.client.emit("serverRequest", { id: 21, method: "item/tool/call", params: { tool: "lalime_click", arguments: { name: "Close", windowTitle: "Editor" } } });
+  f.client.emit("serverRequest", { id: 20, method: "item/tool/call", params: { tool: "lalime_click", arguments: { name: "Delete\u202e\n" + "x".repeat(5000), windowTitle: "Editor" } } });
+  f.client.emit("serverRequest", { id: 21, method: "item/tool/call", params: { tool: "lalime_click", arguments: { name: "Remove", windowTitle: "Editor" } } });
   await flush();
   const cardId = f.session.getSnapshot().pendingApproval!.action.id;
   let finish!: (value: { ok: boolean; output: string }) => void;
@@ -174,7 +175,7 @@ it.each([true, false])("publishes the cancelled approval to the renderer before 
   expect(snapshot.pendingApproval).toBeNull();
   expect(notice).toMatchObject({ actionId: cardId, reason: "user_undo", withdrawnCount: 2 });
   expect(notice!.message).toMatch(/cancelled.*approval.*Undo/);
-  expect(notice!.summary).toContain("Save");
+  expect(notice!.summary).toContain("Delete");
   for (const text of [notice!.message, notice!.summary]) {
     expect(text.length).toBeLessThanOrEqual(4096);
     expect(text).not.toMatch(/[\u202e\n]/);
@@ -234,12 +235,12 @@ it.each(["Mom\u2019s \u201cbirthday\u201d photos.zip", "\u2018\u2019\u201a\u201b
 
 it("names Undo as the cause in every withdrawn tool reply and uses plural notice wording", async () => {
   const f = await fixture();
-  for (const [id, name] of [[30, "Save"], [31, "Close"]] as const) {
+  for (const [id, name] of [[30, "Delete"], [31, "Remove"]] as const) {
     f.client.emit("serverRequest", { id, method: "item/tool/call", params: { tool: "lalime_click", arguments: { name, windowTitle: "Editor" } } });
   }
   await flush(); await f.session.undo(f.entryId); await flush();
   const notice = f.session.getSnapshot().activity.find((entry) => entry.id === f.entryId)!.approvalWithdrawal!;
-  expect(notice.message).toMatch(/^Lalime cancelled 2 waiting approvals because you pressed Undo: .*Save.*and 1 more\.$/);
+  expect(notice.message).toMatch(/^Lalime cancelled 2 waiting approvals because you pressed Undo: .*Delete.*and 1 more\.$/);
   expect(f.client.respondToolCall.mock.calls).toHaveLength(2);
   for (const [, response] of f.client.respondToolCall.mock.calls) {
     expect(response.contentItems[0].text).toContain("because the user pressed Undo");
@@ -250,7 +251,7 @@ it.each([0, 2])("carries structured restore counts to the model and writer, rest
   const f = await fixture();
   f.undo.mockResolvedValue({ ok: false, output: `Restored ${restored} of 3 items. A newer report.txt was left alone.`, restoreProgress: { restored, total: 3 } } as never);
   await f.session.undo(f.entryId);
-  f.client.emit("serverRequest", { id: 40, method: "item/tool/call", params: { tool: "lalime_click", arguments: { name: "Save", windowTitle: "Editor" } } });
+  f.client.emit("serverRequest", { id: 40, method: "item/tool/call", params: { tool: "lalime_click", arguments: { name: "Delete", windowTitle: "Editor" } } });
   await flush();
   const response = JSON.stringify(f.client.respondToolCall.mock.calls);
   expect(response).toContain(restored ? '\\"outcome\\":\\"partly_restored\\"' : '\\"outcome\\":\\"failed\\"');
@@ -268,7 +269,7 @@ it("does not cut a recovery path in the model result or the writer error hint", 
   const recoveryPath = "C:\\recovery\\" + "folder\\".repeat(80) + "old-copy.tmp";
   const output = `report.txt: a newer file with this name is already there, so it was left alone. The old copy is kept at ${recoveryPath}`;
   f.undo.mockResolvedValue({ ok: false, output }); await f.session.undo(f.entryId);
-  f.client.emit("serverRequest", { id: 50, method: "item/tool/call", params: { tool: "lalime_click", arguments: { name: "Save", windowTitle: "Editor" } } }); await flush();
+  f.client.emit("serverRequest", { id: 50, method: "item/tool/call", params: { tool: "lalime_click", arguments: { name: "Delete", windowTitle: "Editor" } } }); await flush();
   expect(JSON.stringify(f.client.respondToolCall.mock.calls)).toContain("old-copy.tmp");
   vi.spyOn(writerKeys, "loadWriterKey").mockReturnValue("fixture-placeholder");
   const compose = vi.spyOn(WriterService.prototype, "composeReply").mockResolvedValue({ text: "Fixture reply", used: true });
@@ -282,7 +283,7 @@ it("omits an oversized model detail as a whole instead of sending a partial reco
   const f = await fixture();
   const output = "The old copy is kept at C:\\recovery\\" + "folder\\".repeat(700) + "old-copy.tmp";
   f.undo.mockResolvedValue({ ok: false, output }); await f.session.undo(f.entryId);
-  f.client.emit("serverRequest", { id: 60, method: "item/tool/call", params: { tool: "lalime_click", arguments: { name: "Save", windowTitle: "Editor" } } }); await flush();
+  f.client.emit("serverRequest", { id: 60, method: "item/tool/call", params: { tool: "lalime_click", arguments: { name: "Delete", windowTitle: "Editor" } } }); await flush();
   const noticeText = f.client.respondToolCall.mock.calls[0][1].contentItems.at(-1).text as string;
   expect(noticeText.includes("old-copy.tmp") || (!noticeText.includes("C:") && /details/i.test(noticeText))).toBe(true);
   expect(f.session.getSnapshot().activity[0].undoResult).toMatchObject({ reason: output });
@@ -324,7 +325,7 @@ it("reports a real NodeHands partial restore consistently to the snapshot, model
   expect(result.reason).toContain(recoveryPath);
   expect(readFileSync(recoveryPath, "utf8")).toBe("original");
   expect(readFileSync(files[1], "utf8")).toBe("newer file");
-  f.client.emit("serverRequest", { id: 70, method: "item/tool/call", params: { tool: "lalime_click", arguments: { name: "Save", windowTitle: "Editor" } } }); await flush();
+  f.client.emit("serverRequest", { id: 70, method: "item/tool/call", params: { tool: "lalime_click", arguments: { name: "Delete", windowTitle: "Editor" } } }); await flush();
   const modelText = f.client.respondToolCall.mock.calls[0][1].contentItems.at(-1).text as string;
   expect(modelText).toContain('"outcome":"partly_restored"');
   expect(modelText).toContain('"restored":2,"total":3');
@@ -358,7 +359,7 @@ it("reports all restored files with a metadata warning to the snapshot, model, a
   await f.session.undo(f.entryId);
   expect(f.session.getSnapshot().activity[0]).toMatchObject({ undone: true, undoResult: { status: "restored", warning, restored: 2, total: 2 } });
   expect(f.session.getSnapshot().messages.at(-1)!.content).toContain(warning);
-  f.client.emit("serverRequest", { id: 80, method: "item/tool/call", params: { tool: "lalime_click", arguments: { name: "Save", windowTitle: "Editor" } } }); await flush();
+  f.client.emit("serverRequest", { id: 80, method: "item/tool/call", params: { tool: "lalime_click", arguments: { name: "Delete", windowTitle: "Editor" } } }); await flush();
   const model = f.client.respondToolCall.mock.calls[0][1].contentItems.at(-1).text as string;
   expect(model).toContain('"outcome":"restored"'); expect(model).toContain(warning);
   vi.spyOn(writerKeys, "loadWriterKey").mockReturnValue("fixture-placeholder");

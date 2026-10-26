@@ -147,6 +147,13 @@ function isBroadFileTarget(target: string): boolean {
     || /^(?:~|\$env:userprofile|%userprofile%)$/i.test(normalized);
 }
 
+// Jackson, Oct 26: "Ask before delete and route deletes to recycle bin".
+// A permanent delete in a program folder is not run; the model is sent to
+// lalime_recycle or an uninstall, unless it says the disk is too full.
+const PROTECTED_DELETE_TARGET = /(?:[\\/]|^|["'\s])(?:program files(?: \(x86\))?|programdata|windowsapps)(?:[\\/"'\s]|$)|\$\{?env:(?:programfiles(?:\(x86\))?|programw6432|programdata|commonprogramfiles(?:\(x86\))?|allusersprofile)\}?|%(?:programfiles(?:\(x86\))?|programw6432|programdata|commonprogramfiles(?:\(x86\))?|allusersprofile)%|getfolderpath\([^)]*(?:programfiles|commonapplicationdata|commonprogramfiles)/i;
+const PROTECTED_DELETE_REROUTE = "Not run. Lalime does not permanently delete files in Program Files or ProgramData. If this is an installed app, uninstall it through Settings > Apps (lalime_open_settings ms-settings:appsfeatures). Otherwise use lalime_recycle with the exact paths so the user can restore them. Only if the disk is too full for the Recycle Bin, call lalime_run_powershell again with permanentDelete: true and say so in why; the user will see a separate permanent-delete card.";
+const PERMANENT_DELETE_CARD = "Lalime wants to permanently delete files in a program folder because the disk is too full for the Recycle Bin. They will not go to the Recycle Bin and cannot be restored.";
+
 function isDestructiveAction(action: ProposedAction): boolean {
   if (["file_write", "file_move", "file_delete"].includes(action.kind)) return true;
   // After a hard block, all shell alternatives need renewed, deliberate consent.
@@ -1138,8 +1145,9 @@ export class LiveAgentHost extends EventEmitter {
       case "lalime_run_powershell": {
         if (typeof args.command !== "string" || !args.command.trim() || args.command.length > 32768 || args.command.includes("\0")
           || typeof args.why !== "string" || !args.why.trim() || args.why.length > 4096
-          || (args.admin !== undefined && typeof args.admin !== "boolean")) {
-          throw new Error("Send a non-empty command and why, with an optional boolean admin flag.");
+          || (args.admin !== undefined && typeof args.admin !== "boolean")
+          || (args.permanentDelete !== undefined && typeof args.permanentDelete !== "boolean")) {
+          throw new Error("Send a non-empty command and why, with optional boolean admin and permanentDelete flags.");
         }
         const command = args.command;
         const admin = args.admin === true;
@@ -1161,9 +1169,18 @@ export class LiveAgentHost extends EventEmitter {
         if (gate.decision.kind === "block" || gate.decision.kind === "explain_only") {
           return { response: { success: false, contentItems: [{ type: "inputText", text: gate.decision.plainEnglish }] } };
         }
-        if (!gate.allow || admin) {
+        let decision = gate.decision;
+        const permanentDelete = args.permanentDelete === true;
+        if (decision.matchedRules.includes("ask.permanent.delete") && PROTECTED_DELETE_TARGET.test(command)) {
+          if (!permanentDelete) {
+            return { response: { success: false, contentItems: [{ type: "inputText", text: PROTECTED_DELETE_REROUTE }] } };
+          }
+          decision = { ...decision, kind: "ask_hold", tier: decision.tier < 3 ? 3 : decision.tier, plainEnglish: PERMANENT_DELETE_CARD,
+            matchedRules: [...decision.matchedRules, "host.permanent_delete_disk_full"], undoable: false };
+        }
+        if (!gate.allow || admin || permanentDelete) {
           const { choice, withdrawn, withdrawalReason } = await this.waitUiApproval(reqId, "tool", {
-            decision: gate.decision, action, assistantExplanation: args.why,
+            decision, action, assistantExplanation: args.why,
           });
           if (choice === "not_now") throw new Error(withdrawn ? withdrawalMessage(withdrawalReason) : "User declined.");
         }

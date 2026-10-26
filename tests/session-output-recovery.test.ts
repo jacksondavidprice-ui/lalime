@@ -24,8 +24,8 @@ async function fixture() {
 for (const text of ["", "I'll start it.", "Let me check..."]) it(`uses a truthful activity fallback for final ${JSON.stringify(text)}`, async () => {
   const { client, session } = await fixture();
   client.emit("serverRequest", { id: 1, method: "item/tool/call", params: { tool: "lalime_open_settings", arguments: { uri: "ms-settings:display" } } });
-  await vi.waitFor(() => expect(session.getSnapshot().pendingApproval).not.toBeNull());
-  await session.respondApproval("do_it", session.getSnapshot().pendingApproval!.action.id);
+  // Opening Settings is tier 1 (Jackson, Oct 26): no card, it runs and is recorded.
+  expect(session.getSnapshot().pendingApproval).toBeNull();
   await vi.waitFor(() => expect(session.getSnapshot().activity).toHaveLength(1));
   client.emit("item/completed", { item: { type: "agentMessage", text } });
   client.emit("turn/completed", { turn: { id: "turn", status: "completed" } });
@@ -53,8 +53,8 @@ it("keeps raw Codex start failures out of chat", async () => {
 it("keeps recorded work visible when a provider fails after a change", async () => {
   const { client, session } = await fixture();
   client.emit("serverRequest", { id: 1, method: "item/tool/call", params: { tool: "lalime_open_settings", arguments: { uri: "ms-settings:display" } } });
-  await vi.waitFor(() => expect(session.getSnapshot().pendingApproval).not.toBeNull());
-  await session.respondApproval("do_it", session.getSnapshot().pendingApproval!.action.id);
+  // Opening Settings is tier 1 (Jackson, Oct 26): no card, it runs and is recorded.
+  expect(session.getSnapshot().pendingApproval).toBeNull();
   await vi.waitFor(() => expect(session.getSnapshot().activity).toHaveLength(1));
   client.emit("turn/completed", { turn: { id: "turn", status: "failed", error: { message: "HTTP 400" } } });
   const reply = session.getSnapshot().messages.at(-1)!.content;

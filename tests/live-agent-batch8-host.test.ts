@@ -1,3 +1,4 @@
+// Oct 26: plain UI clicks are tier 1, so these fixtures click a consequential control to get a card.
 import { EventEmitter } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LiveAgentHost } from "../electron/main/live-agent.js";
@@ -101,7 +102,7 @@ describe("batch 8 host queue, display, withdrawal and scope", () => {
 
   it.each(["stop", "new task", "screen read"])("reports host withdrawal, not user decline, after %s", async (cause) => {
     const f = await fixture();
-    const id = f.tool("lalime_click", { name: "Save", windowTitle: "Editor" });
+    const id = f.tool("lalime_click", { name: "Delete", windowTitle: "Editor" });
     await flush();
     expect(f.cards).toHaveLength(1);
     if (cause === "stop") await f.host.stop();
@@ -116,7 +117,7 @@ describe("batch 8 host queue, display, withdrawal and scope", () => {
 
   it("retains explicit user-decline wording", async () => {
     const f = await fixture();
-    const id = f.tool("lalime_click", { name: "Save", windowTitle: "Editor" });
+    const id = f.tool("lalime_click", { name: "Delete", windowTitle: "Editor" });
     await flush();
     f.host.respondApproval("not_now", f.cards[0].action.id);
     await flush();

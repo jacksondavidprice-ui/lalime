@@ -18,14 +18,15 @@ function decide(payload: string, kind: ProposedAction["kind"] = "powershell") {
   return evaluateActionSync(action);
 }
 
-const LITERAL = "Remove-Item C:\\Windows\\System32\\spool\\PRINTERS\\JOB0077.SPL -Force";
+// Print-queue .SPL/.SHD files are a narrow exception since Oct 26 (Jackson):
+// they get ask.print.spool.clear instead of a block. See jackson-oct26-decisions.test.ts.
+const LITERAL = "Remove-Item C:\\Windows\\System32\\drivers\\e1000.sys -Force";
 
 const BLOCKED_SPELLINGS: Array<[string, string, ProposedAction["kind"]?]> = [
-  ["$env:SystemRoot delete (P9 repro)", "Remove-Item \"$env:SystemRoot\\System32\\spool\\PRINTERS\\JOB0077.SPL\",\"$env:SystemRoot\\System32\\spool\\PRINTERS\\JOB0077.SHD\" -Force"],
   ["$env:SystemRoot wildcard (paper-out harm)", "Stop-Service Spooler; Remove-Item \"$env:SystemRoot\\System32\\spool\\PRINTERS\\*\" -Force; Start-Service Spooler"],
   ["${env:SystemRoot} delete", "Remove-Item \"${env:SystemRoot}\\System32\\drivers\\e1000.sys\" -Force"],
   ["$env:windir delete", "Remove-Item $env:windir\\System32\\drivers\\e1000.sys"],
-  ["%windir% del via cmd", "cmd /c del /q %windir%\\System32\\spool\\PRINTERS\\*.SPL", "shell"],
+  ["%windir% del via cmd", "cmd /c del /q %windir%\\System32\\drivers\\*.sys", "shell"],
   ["%SystemRoot% del", "del /f %SystemRoot%\\System32\\drivers\\e1000.sys", "shell"],
   ["%windir% rd SysWOW64", "rd /s /q %WINDIR%\\SysWOW64", "shell"],
   ["$env:SystemDrive\\Windows", "Remove-Item \"$env:SystemDrive\\Windows\\System32\\drivers\\e1000.sys\""],

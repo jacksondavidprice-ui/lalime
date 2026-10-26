@@ -26,24 +26,45 @@ class Client extends EventEmitter {
 }
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
-it.each(pages)("keeps %s behind a Guardian card before invoking Hands", async (page) => {
+// Jackson, Oct 26: opening a Settings page is tier 1. Hands opens it without a card and
+// the step is journalled; any change made on the page goes through its own gate.
+it.each(pages)("opens %s without a card and records it", async (page) => {
   const client = new Client(); const hands = new MockHands();
   const open = vi.spyOn(hands, "openSettings");
   const host = new LiveAgentHost(client, hands);
-  const cards: PendingApproval[] = [];
+  const cards: PendingApproval[] = []; const activity: unknown[] = [];
   host.on("approvalNeeded", (card) => cards.push(card));
+  host.on("activity", (item) => activity.push(item));
   try {
     await host.runTurn("Open the requested repair Settings page");
     client.emit("serverRequest", { id: 1, method: "item/tool/call", params: {
       tool: "lalime_open_settings", arguments: { uri: `ms-settings:${page}` },
     } });
     await flush();
-    expect(open).not.toHaveBeenCalled();
-    expect(cards).toHaveLength(1);
-    expect(cards[0].decision).toMatchObject({ kind: "ask", tier: 2 });
-    host.respondApproval("do_it", cards[0].action.id);
-    await flush();
+    expect(cards).toHaveLength(0);
     expect(open).toHaveBeenCalledExactlyOnceWith(`ms-settings:${page}`);
     expect(client.respondToolCall).toHaveBeenCalledWith(1, expect.objectContaining({ success: true }));
+    expect(activity).toHaveLength(1);
+  } finally { await host.stop(); }
+});
+
+it.each(["Uninstall", "Reset", "Turn off"])("keeps a %s click on a repair page behind a Guardian card", async (name) => {
+  const client = new Client(); const hands = new MockHands();
+  const click = vi.spyOn(hands, "clickElement");
+  const host = new LiveAgentHost(client, hands);
+  const cards: PendingApproval[] = [];
+  host.on("approvalNeeded", (card) => cards.push(card));
+  try {
+    await host.runTurn("Fix my startup apps");
+    client.emit("serverRequest", { id: 1, method: "item/tool/call", params: {
+      tool: "lalime_click", arguments: { name, windowTitle: "Settings" },
+    } });
+    await flush();
+    expect(click).not.toHaveBeenCalled();
+    expect(cards).toHaveLength(1);
+    expect(cards[0].decision).toMatchObject({ kind: "ask", tier: 2, undoable: false });
+    host.respondApproval("do_it", cards[0].action.id);
+    await flush();
+    expect(click).toHaveBeenCalledExactlyOnceWith(name, "Settings");
   } finally { await host.stop(); }
 });

@@ -21,13 +21,20 @@ async function setup(options = {}) {
 it("advertises explicit named value targeting", () => {
   expect(LALIME_DYNAMIC_TOOLS.find((t) => t.name === "lalime_set_value")?.inputSchema).toMatchObject({ required: ["name", "value", "windowTitle"] });
 });
-it.each([25, "on", "Headphones"])("gates an exact named value and sends its text to Hands: %j", async (value) => {
+// Jackson, Oct 26: typing and setting values are tier 1.
+it.each([25, "on", "Headphones"])("sets an ordinary named value without a card: %j", async (value) => {
   const f = await setup(); const set = vi.fn(async () => ({ ok: true, output: "value set" })); Object.assign(f.hands, { setElementValue: set });
   f.call(1, "lalime_set_value", { name: "Volume", value, windowTitle: "Settings" }); await flush();
-  expect(f.cards).toHaveLength(1); expect(f.cards[0].action.kind).toBe("ui_type");
-  expect(f.cards[0].action.summary).toContain("Volume"); expect(set).not.toHaveBeenCalled();
-  f.host.respondApproval("do_it", f.cards[0].action.id); await flush();
+  expect(f.cards).toHaveLength(0);
   expect(set).toHaveBeenCalledExactlyOnceWith("Volume", String(value), "Settings"); expect(f.response(1)?.success).toBe(true); expect(f.activity).toHaveLength(1);
+});
+it.each<[string, string | number, string]>([["Action", "Remove everything", "Reset this PC"], ["Command", "Get-Date", "Windows PowerShell"]])("gates a consequential named value and sends its text to Hands: %s=%j in %s", async (name, value, windowTitle) => {
+  const f = await setup(); const set = vi.fn(async () => ({ ok: true, output: "value set" })); Object.assign(f.hands, { setElementValue: set });
+  f.call(1, "lalime_set_value", { name, value, windowTitle }); await flush();
+  expect(f.cards).toHaveLength(1); expect(f.cards[0].action.kind).toBe("ui_type");
+  expect(f.cards[0].action.summary).toContain(name); expect(set).not.toHaveBeenCalled();
+  f.host.respondApproval("do_it", f.cards[0].action.id); await flush();
+  expect(set).toHaveBeenCalledExactlyOnceWith(name, String(value), windowTitle); expect(f.response(1)?.success).toBe(true); expect(f.activity).toHaveLength(1);
 });
 it.each([{ name: "Volume", value: 20 }, { name: "", windowTitle: "Settings", value: 20 }, { name: "Volume", windowTitle: "Settings", value: {} }])("rejects invalid value target before consent: %j", async (args) => {
   const f = await setup(); const set = vi.fn(); Object.assign(f.hands, { setElementValue: set });

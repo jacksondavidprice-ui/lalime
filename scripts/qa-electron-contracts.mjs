@@ -128,40 +128,42 @@ try {
   const finish = async (request) => { reply(request, text("Fixture task completed.")); await waitState((state) => !state.running); };
   const countCalls = (method) => app.evaluate((_, name) => globalThis.contractCalls.filter((call) => call.method === name).length, method);
 
+// Jackson, Oct 26: opening Settings, clicking and typing are tier 1. These fixtures use
+// consequential clicks (ask.ui.consequential, tier 2, not undoable) to exercise the card paths.
   // RepeatGuard refuses a third identical call in one turn, so the revoke check
   // and the same-task reuse check each use at most two identical calls.
-  let request = await start("Open Sound settings to test revoking one exact task grant.");
-  reply(request, tool("lalime_open_settings", { uri: "ms-settings:sound" }));
+  let request = await start("Reset the Sound fixture to test revoking one exact task grant.");
+  reply(request, tool("lalime_click", { name: "Reset", windowTitle: "Sound" }));
   let card = await approval();
   assert.equal(card.canAllowForTask, true);
   await page.getByRole("button", { name: "Allow for this task", exact: true }).click();
   request = await nextRequest();
   assert.equal((await snapshot()).taskGrants.length, 1);
-  assert.equal(await countCalls("openSettings"), 1);
+  assert.equal(await countCalls("clickElement"), 1);
   await page.getByRole("button", { name: "Open plan and activity", exact: true }).click();
   const activityDialog = page.getByRole("dialog", { name: "Plan and activity", exact: true });
   await activityDialog.getByTestId("task-grants").getByRole("button", { name: "Revoke", exact: true }).click();
   await waitState((state) => state.taskGrants.length === 0);
   await activityDialog.getByTestId("task-grants").waitFor({ state: "hidden" });
   await activityDialog.getByRole("button", { name: "Close", exact: true }).click();
-  reply(request, tool("lalime_open_settings", { uri: "ms-settings:sound" }));
+  reply(request, tool("lalime_click", { name: "Reset", windowTitle: "Sound" }));
   await approval();
-  assert.equal(await countCalls("openSettings"), 1);
+  assert.equal(await countCalls("clickElement"), 1);
   await page.getByTestId("approval-not-now").click();
   await finish(await nextRequest());
 
-  request = await start("Open Display settings twice to test one exact task grant.");
-  reply(request, tool("lalime_open_settings", { uri: "ms-settings:display" }));
+  request = await start("Turn off the Display fixture twice to test one exact task grant.");
+  reply(request, tool("lalime_click", { name: "Turn off", windowTitle: "Display" }));
   card = await approval();
   assert.equal(card.canAllowForTask, true);
   assert.equal((await snapshot()).pendingApprovalCount, 1);
   await page.getByRole("button", { name: "Allow for this task", exact: true }).click();
   request = await nextRequest();
   assert.equal((await snapshot()).taskGrants.length, 1);
-  assert.equal(await countCalls("openSettings"), 2);
-  reply(request, tool("lalime_open_settings", { uri: "ms-settings:display" }));
+  assert.equal(await countCalls("clickElement"), 2);
+  reply(request, tool("lalime_click", { name: "Turn off", windowTitle: "Display" }));
   request = await nextRequest();
-  assert.equal(await countCalls("openSettings"), 3);
+  assert.equal(await countCalls("clickElement"), 3);
   assert.equal((await snapshot()).pendingApprovalCount, 0);
   await finish(request);
   pass("HTTP tool grant, same-task reuse, renderer Revoke, and fresh approval after revocation");
@@ -197,15 +199,15 @@ try {
   await finish(await nextRequest());
   const pendingUndoChange = (await snapshot()).activity.find(entry => entry.undoable && !entry.undone);
   assert.ok(pendingUndoChange);
-  request = await start("Open settings after reviewing the new approval.");
-  reply(request, tool("lalime_open_settings", { uri: "ms-settings:display" }));
+  request = await start("Remove a fixture app after reviewing the new approval.");
+  reply(request, tool("lalime_click", { name: "Remove", windowTitle: "Apps" }));
   const withdrawnCard = await approval();
-  const settingsCallsBeforeUndo = await countCalls("openSettings");
+  const settingsCallsBeforeUndo = await countCalls("clickElement");
   await page.evaluate(id => window.lalime.undo(id), pendingUndoChange.id);
   await waitState(state => state.pendingApproval === null && state.pendingApprovalCount === 0);
   await page.getByTestId("approval-card").waitFor({ state: "hidden" });
   assert.equal(await page.evaluate(id => window.lalime.respondApproval("do_it", id), withdrawnCard.action.id), false);
-  assert.equal(await countCalls("openSettings"), settingsCallsBeforeUndo);
+  assert.equal(await countCalls("clickElement"), settingsCallsBeforeUndo);
   request = await nextRequest();
   const withdrawal = request.parsed.messages.at(-1).content;
   assert.match(withdrawal, /withdrew|withdrawn/i);
@@ -242,12 +244,12 @@ try {
   assert.equal(await page.getByRole("button", { name: "Allow for this task", exact: true }).count(), 0);
   assert.ok(card.decision.matchedRules.includes("host.screen_observation_consent"));
   assert.equal((await snapshot()).blockedNotice, null);
-  assert.equal(await countCalls("clickElement"), 0);
+  const clicksBeforeNightLight = await countCalls("clickElement");
   await page.getByTestId("approval-do-it").click();
   await finish(await nextRequest());
   assert.equal(await countCalls("listWindows"), 1);
   assert.equal(await countCalls("listUiElements"), 1);
-  assert.equal(await countCalls("clickElement"), 1);
+  assert.equal(await countCalls("clickElement"), clicksBeforeNightLight + 1);
   pass("HTTP list_windows/list_ui provenance leads to normal tier-2 approval before a mocked benign action");
 
   request = await start("Test the host service hold and two pending requests without executing a command.");
@@ -275,7 +277,7 @@ try {
     const original = client.respondApproval.bind(client);
     client.respondApproval = (id, decision) => { globalThis.contractDecisions.push({ id, decision }); return original(id, decision); };
     client.emit("serverRequest", { id: "contract-hold", method: "item/commandExecution/requestApproval", params: { itemId: "contract-command", command: "Start-Service Spooler" } });
-    client.emit("serverRequest", { id: "contract-queued", method: "item/tool/call", params: { tool: "lalime_open_settings", arguments: { uri: "ms-settings:display" } } });
+    client.emit("serverRequest", { id: "contract-queued", method: "item/tool/call", params: { tool: "lalime_click", arguments: { name: "Uninstall", windowTitle: "Apps" } } });
   });
   await waitState((state) => state.pendingApprovalCount === 2);
   card = await approval();
@@ -325,7 +327,7 @@ try {
   await page.keyboard.down("Space");
   await page.waitForFunction(() => document.querySelector('[data-testid="approval-card"]')?.textContent?.includes("Release to confirm"));
   await page.keyboard.up("Space");
-  await waitState((state) => state.pendingApprovalCount === 1 && state.pendingApproval?.action.kind === "open_settings");
+  await waitState((state) => state.pendingApprovalCount === 1 && state.pendingApproval?.action.kind === "ui_click");
   await page.getByTestId("approval-card").getByText("1 more waiting", { exact: true }).waitFor({ state: "hidden" });
   assert.deepEqual((await snapshot()).approvalQueue.map((entry) => entry.actionId), [queue[1].actionId]);
   assert.equal(await respond("do_it"), false);

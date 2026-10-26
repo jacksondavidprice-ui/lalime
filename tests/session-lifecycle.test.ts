@@ -1,3 +1,4 @@
+// Oct 26: plain UI clicks are tier 1, so these fixtures click a consequential control to get a card.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -37,8 +38,8 @@ describe("session authentication and cancellation", () => {
     session.attachLiveClient(client);
     await session.sendMessage("Open display settings");
     client.emit("serverRequest", { id: 103, method: "item/tool/call", params: { tool: "lalime_open_settings", arguments: { uri: "ms-settings:display" } } });
-    await vi.waitFor(() => expect(session.getSnapshot().pendingApproval).not.toBeNull());
-    await session.respondApproval("do_it", session.getSnapshot().pendingApproval!.action.id);
+    // Opening Settings is tier 1 (Jackson, Oct 26): no card, it runs and is recorded.
+    expect(session.getSnapshot().pendingApproval).toBeNull();
     await vi.waitFor(() => expect(session.getSnapshot().activity).toHaveLength(1));
     client.emit("item/completed", { item: { type: "agentMessage", text: "Opened settings." } });
     client.emit("turn/completed", { turn: { id: "turn-1", status: "completed" } });
@@ -57,7 +58,7 @@ describe("session authentication and cancellation", () => {
     const client = state.clients[0];
     session.attachLiveClient(client);
     await session.sendMessage("Help with settings");
-    client.emit("serverRequest", { id: 101, method: "item/tool/call", params: { tool: "lalime_click", arguments: { name: "Apply", windowTitle: "Settings" } } });
+    client.emit("serverRequest", { id: 101, method: "item/tool/call", params: { tool: "lalime_click", arguments: { name: "Reset", windowTitle: "Settings" } } });
     await vi.waitFor(() => expect(session.getSnapshot().pendingApproval).not.toBeNull());
     const actionId = session.getSnapshot().pendingApproval!.action.id;
     client.emit("serverRequest", { id: 102, method: "item/commandExecution/requestApproval", params: { command: "Remove-Item C:\\Windows\\System32 -Recurse -Force" } });
@@ -75,7 +76,7 @@ describe("session authentication and cancellation", () => {
     await session.sendMessage("Help with settings");
     client.emit("item/completed", { item: { type: "agentMessage", text: "Checking what is safe to remove first." } });
     await vi.waitFor(() => expect(session.getSnapshot().statusText).toBe("Checking what is safe to remove first."));
-    client.emit("serverRequest", { id: 105, method: "item/tool/call", params: { tool: "lalime_click", arguments: { name: "Apply", windowTitle: "Settings" } } });
+    client.emit("serverRequest", { id: 105, method: "item/tool/call", params: { tool: "lalime_click", arguments: { name: "Reset", windowTitle: "Settings" } } });
     await vi.waitFor(() => expect(session.getSnapshot().pendingApproval).not.toBeNull());
     client.emit("serverRequest", { id: 104, method: "item/commandExecution/requestApproval", params: { command: "Remove-Item C:\\Windows\\System32 -Recurse -Force" } });
     await vi.waitFor(() => expect(session.getSnapshot().blockedNotice).not.toBeNull());

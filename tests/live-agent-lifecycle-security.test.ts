@@ -1,3 +1,4 @@
+// Oct 26: plain UI clicks are tier 1, so these fixtures click a consequential control to get a card.
 import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 import { LiveAgentHost } from "../electron/main/live-agent.js";
@@ -22,7 +23,7 @@ describe("terminal turn boundaries", () => {
     let card: PendingApproval | undefined;
     host.on("approvalNeeded", (pending) => { card = pending; });
     await host.runTurn("Help");
-    client.emit("serverRequest", { id: 1, method: "item/tool/call", params: { tool: "lalime_click", arguments: { name: "Send", windowTitle: "Editor" } } });
+    client.emit("serverRequest", { id: 1, method: "item/tool/call", params: { tool: "lalime_click", arguments: { name: "Remove", windowTitle: "Editor" } } });
     await flush();
     expect(card).toBeDefined();
     client.emit("turn/completed", { turn: { id: "turn", status: "interrupted" } });
@@ -55,7 +56,7 @@ describe("terminal turn boundaries", () => {
     const card = vi.fn();
     host.on("approvalNeeded", card);
     await host.runTurn("Help");
-    client.emit("serverRequest", { id: 1, method: "item/tool/call", params: { tool: "lalime_click", arguments: { name: "Send" } } });
+    client.emit("serverRequest", { id: 1, method: "item/tool/call", params: { tool: "lalime_click", arguments: { name: "Remove" } } });
     await flush();
     expect(card).not.toHaveBeenCalled();
     expect(click).not.toHaveBeenCalled();

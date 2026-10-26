@@ -42,6 +42,17 @@ export interface EvaluateOptions {
   sessionAllowRuleIds?: Set<string>;
 }
 
+const NOT_UNDOABLE_RULE_IDS = new Set([
+  "ask.permanent.delete",
+  "ask.permanent.delete.file",
+  "ask.print.spool.clear",
+  "ask.recycle.bin.empty",
+  "ask.ui.consequential",
+  "ask.ui.type.into.shell",
+  "ask.ui.security.window",
+  "ask.defender.change",
+]);
+
 function maxTier(a: RiskTier, b: RiskTier): RiskTier {
   return (a > b ? a : b) as RiskTier;
 }
@@ -69,6 +80,7 @@ export function evaluateActionSync(
 ): GuardianDecision {
   const text = normalizeActionText(action);
   const textDeob = deobfuscateLite(text);
+  const textDeobBody = deobfuscateLite(text, { prefix: false });
   const textUnquoted = text.replace(/[`'""'']/g, "");
   const textCollapsed = collapsePolicyTokens(`${text}\n${textDeob}`);
   const matchedRules: string[] = [];
@@ -119,12 +131,15 @@ export function evaluateActionSync(
   let plainEnglish =
     action.summary ??
     `Lalime wants to run a ${action.kind.replaceAll("_", " ")} step.`;
-  let undoable = tier >= 2;
+  // Jackson, Oct 26: a delete is undoable only when it goes to the Recycle
+  // Bin. Permanent deletes and emptying the bin are never undoable.
+  let undoable = tier >= 2 && action.kind !== "file_delete";
   let decisionHint: GuardianDecisionKind | null = null;
 
   for (const rule of ASK_RULES) {
     if (!kindApplies(rule.kinds, action.kind)) continue;
-    const hit = rule.patterns.some((p) => p.test(text) || p.test(textDeob));
+    const deob = rule.commandTextOnly ? textDeobBody : textDeob;
+    const hit = rule.patterns.some((p) => p.test(text) || p.test(deob));
     if (!hit) continue;
     matchedRules.push(rule.id);
     if (options.sessionAllowRuleIds?.has(rule.id) && rule.tier <= 2) {
@@ -134,6 +149,7 @@ export function evaluateActionSync(
     plainEnglish = fillTemplate(rule.plainEnglishTemplate, action);
     if (rule.undoable !== undefined) undoable = rule.undoable;
   }
+  if (matchedRules.some((id) => NOT_UNDOABLE_RULE_IDS.has(id))) undoable = false;
 
   // Tier 4 defaults (boot/platform) — explain only
   if (

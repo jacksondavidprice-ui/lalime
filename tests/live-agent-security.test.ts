@@ -67,13 +67,28 @@ describe("live agent security boundaries", () => {
     expect(f.client.respondApproval).toHaveBeenCalledExactlyOnceWith(1, "decline");
   });
 
-  it.each(["lalime_click", "lalime_type", "lalime_open_settings"])("requires consent for %s", async (tool) => {
+  // Jackson, Oct 26: ordinary clicks, typing and opening Settings are tier 1.
+  it.each(["lalime_click", "lalime_type", "lalime_open_settings"])("runs an ordinary %s without a card", async (tool) => {
+    const f = await fixture();
+    await f.request(1, "item/tool/call", { tool, arguments: { name: "Send", text: "hello", uri: "ms-settings:display", windowTitle: "Editor" } });
+    await flush();
+    expect(f.cards).toHaveLength(0);
+    expect(f.client.respondToolCall.mock.calls[0][1].success).toBe(true);
+  });
+
+  it.each<[string, Record<string, string>]>([
+    ["lalime_click", { name: "Uninstall", windowTitle: "Apps" }],
+    ["lalime_click", { name: "Yes", windowTitle: "Reset this PC" }],
+    ["lalime_type", { text: "Remove-Item C:\\Users\\Me\\a.txt", windowTitle: "Notes" }],
+    ["lalime_type", { text: "hello", windowTitle: "Windows PowerShell" }],
+  ])("requires consent for a consequential %s %j", async (tool, args) => {
     const f = await fixture();
     const click = vi.spyOn(f.hands, "clickElement");
     const type = vi.spyOn(f.hands, "typeText");
     const open = vi.spyOn(f.hands, "openSettings");
-    await f.request(1, "item/tool/call", { tool, arguments: { name: "Send", text: "hello", uri: "ms-settings:display", windowTitle: "Editor" } });
+    await f.request(1, "item/tool/call", { tool, arguments: args });
     expect(f.cards).toHaveLength(1);
+    expect(f.cards[0].decision.undoable).toBe(false);
     expect(click).not.toHaveBeenCalled();
     expect(type).not.toHaveBeenCalled();
     expect(open).not.toHaveBeenCalled();

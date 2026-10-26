@@ -74,7 +74,8 @@ const server = createServer(async (request, response) => {
         message = textMessage("The local mock provider fixture is connected.");
         break;
       case 3:
-        message = toolMessage("fixture-settings", "lalime_open_settings", { uri: "ms-settings:display" });
+        // Jackson, Oct 26: opening Settings is tier 1, so the decline fixture uses a consequential click.
+        message = toolMessage("fixture-settings", "lalime_click", { name: "Uninstall", windowTitle: "Apps" });
         break;
       case 4:
         assert.ok(parsed.messages.some((item) => item.role === "tool" && item.tool_call_id === "fixture-settings" && item.content === "User declined."));
@@ -144,11 +145,11 @@ try {
   assert.ok((await page.evaluate(() => window.lalime.getSnapshot())).plan.some((step) => step.label === "Check fixture connection"));
   console.log("PASS real desktop session, local HTTP fixture, plan tool, and final text");
 
-  await page.evaluate(() => window.lalime.sendMessage("Ask to open Display settings so I can decline the fixture request."));
+  await page.evaluate(() => window.lalime.sendMessage("Ask to click Uninstall so I can decline the fixture request."));
   await page.getByTestId("approval-card").waitFor();
   const pending = (await page.evaluate(() => window.lalime.getSnapshot())).pendingApproval;
-  assert.equal(pending.action.kind, "open_settings");
-  assert.match(pending.action.payload, /ms-settings:display/);
+  assert.equal(pending.action.kind, "ui_click");
+  assert.match(pending.action.payload, /Uninstall/);
   assert.equal(requests.length, 3, "No tool result may reach the fixture before approval");
   await page.evaluate(() => window.lalime.respondApproval("do_it", "stale-fixture-action"));
   assert.equal((await page.evaluate(() => window.lalime.getSnapshot())).pendingApproval.action.id, pending.action.id);

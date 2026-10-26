@@ -1,8 +1,9 @@
 import { useEffect } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, MotionConfig } from "framer-motion";
 import { useAppStore } from "./lib/store";
 import { Onboarding } from "./pages/Onboarding";
 import { ChatHome } from "./pages/ChatHome";
+import { BootSplash } from "./components/BootSplash";
 
 export function App() {
   const hydrate = useAppStore((s) => s.hydrate);
@@ -15,14 +16,14 @@ export function App() {
 
   if (!ready) {
     return (
-      <div className="bg-atmosphere relative flex h-full items-center justify-center">
-        <div className="bg-grain absolute inset-0" />
-        <p className="font-display text-2xl font-bold tracking-tight text-ink">Lalime</p>
-      </div>
+      <MotionConfig reducedMotion="user">
+        <BootSplash />
+      </MotionConfig>
     );
   }
 
   return (
+    <MotionConfig reducedMotion="user">
     <div className="bg-atmosphere relative h-full overflow-hidden">
       <div className="bg-grain absolute inset-0" />
       <AnimatePresence mode="wait">
@@ -50,5 +51,6 @@ export function App() {
         )}
       </AnimatePresence>
     </div>
+    </MotionConfig>
   );
 }

@@ -35,7 +35,7 @@ export class DemoEngine {
   private listeners = new Set<Listener>();
   private hands = createHandsClient();
   private abort = false;
-  private approvalWaiters: Array<(choice: ApprovalChoice) => void> = [];
+  private approvalWaiters: Array<{ actionId: string; resolve: (choice: ApprovalChoice) => void }> = [];
 
   private state: AppSnapshot = {
     // Only reachable when LALIME_DEMO / ?demo=1 gates are on (never packaged UI).
@@ -133,7 +133,7 @@ export class DemoEngine {
   stop(): void {
     this.abort = true;
     this.hands.stop();
-    for (const w of this.approvalWaiters) w("not_now");
+    for (const w of this.approvalWaiters) w.resolve("not_now");
     this.approvalWaiters = [];
     this.patch({
       running: false,
@@ -143,9 +143,13 @@ export class DemoEngine {
     });
   }
 
-  async respondApproval(choice: ApprovalChoice): Promise<void> {
-    const waiters = this.approvalWaiters.splice(0);
-    for (const w of waiters) w(choice);
+  async respondApproval(choice: ApprovalChoice, actionId?: string): Promise<boolean> {
+    if (!actionId || this.state.pendingApproval?.action.id !== actionId) return false;
+    const index = this.approvalWaiters.findIndex((waiter) => waiter.actionId === actionId);
+    if (index < 0) return false;
+    const [waiter] = this.approvalWaiters.splice(index, 1);
+    waiter.resolve(choice);
+    return true;
   }
 
   async undo(activityId: string): Promise<void> {
@@ -237,12 +241,12 @@ export class DemoEngine {
   }
 
   private async waitForApproval(pending: PendingApproval): Promise<ApprovalChoice> {
-    this.patch({
-      pendingApproval: pending,
-      statusText: "Waiting for your OK",
-    });
     return new Promise((resolve) => {
-      this.approvalWaiters.push(resolve);
+      this.approvalWaiters.push({ actionId: pending.action.id, resolve });
+      this.patch({
+        pendingApproval: pending,
+        statusText: "Waiting for your OK",
+      });
     });
   }
 

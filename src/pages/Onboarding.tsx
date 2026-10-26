@@ -53,7 +53,7 @@ export function Onboarding() {
       if (!r.ok) {
         setAuthMsg(
           r.message ??
-            "ChatGPT sign-in needs the Codex CLI. Install it, run codex login once, or use an API key below.",
+            t("errors.codexMissing"),
         );
         return;
       }
@@ -69,7 +69,7 @@ export function Onboarding() {
     try {
       const r = await getApi().signInApiKey(apiKey);
       if (!r.ok) {
-        setAuthMsg(r.message ?? "API key sign-in failed. Check the key and that Codex is installed.");
+        setAuthMsg(r.message ?? t("signin.apiError"));
         return;
       }
       setIndex((i) => Math.min(i + 1, slides.length - 1));
@@ -106,176 +106,208 @@ export function Onboarding() {
 
   return (
     <div
-      className="relative mx-auto flex h-full w-full max-w-3xl flex-col px-6 py-10 md:px-10 md:py-14"
+      className="onboarding-layout relative h-full w-full overflow-y-auto"
       data-testid="onboarding"
     >
-      <motion.div
-        aria-hidden
-        className="pointer-events-none absolute left-1/2 top-24 h-64 w-64 -translate-x-1/2 rounded-full bg-lime/20 blur-3xl"
-        animate={{ scale: [1, 1.08, 1], opacity: [0.5, 0.85, 0.5] }}
-        transition={{ duration: 5.5, repeat: Infinity, ease: "easeInOut" }}
-      />
+      <div className="mx-auto flex min-h-full w-full max-w-[1440px] flex-col px-6 py-7 sm:px-10 lg:px-16 lg:py-10">
+        <div className="relative flex shrink-0 items-center justify-between gap-6">
+          <Logo size="lg" />
+          <p className="rounded-full border border-ink/10 bg-surface px-4 py-2 font-mono text-xs tracking-[0.12em] text-ink/55">
+            <span className="text-lime">0{index + 1}</span> / 0{slides.length}
+          </p>
+        </div>
 
-      <div className="relative flex items-center justify-between">
-        <Logo size="lg" />
-        <p className="text-sm font-medium text-ink/45">
-          {index + 1} / {slides.length}
-        </p>
-      </div>
+      <div className={`grid flex-1 items-center gap-12 py-8 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16 ${signInSlide || writerSlide ? "md:py-8" : "md:py-14"}`}>
+          <div className="relative flex min-w-0 flex-col justify-center">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={slide.id}
+                initial={{ opacity: 0, y: 18 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -14 }}
+                transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                className="max-w-xl"
+              >
+                <p className="flex items-center gap-3 text-[11px] font-bold uppercase tracking-[0.22em] text-lime">
+                  <span className="h-px w-7 bg-lime" aria-hidden />
+                  {slide.eyebrow}
+                </p>
+            <h1 className={`font-display mt-6 font-extrabold leading-[1.08] tracking-[-0.055em] text-ink ${signInSlide || writerSlide ? "text-[2.1rem] sm:text-[2.5rem] xl:text-[2.8rem]" : "text-[2.65rem] sm:text-5xl xl:text-[3.8rem]"}`}>
+                  {slide.title}
+                </h1>
+            <p className={`mt-5 max-w-[31rem] text-base leading-[1.8] text-muted ${signInSlide || writerSlide ? "" : "sm:text-lg"}`}>
+                  {slide.body}
+                </p>
+              </motion.div>
+            </AnimatePresence>
 
-      <div className="relative flex flex-1 flex-col justify-center">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={slide.id}
-            initial={{ opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -14 }}
-            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-            className="max-w-xl"
-          >
-            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-ink/40">
-              {slide.eyebrow}
+            {signInSlide && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.08 }}
+                className="mt-8 flex max-w-xl flex-col gap-4"
+                data-testid="sign-in-panel"
+              >
+                <PrimaryButton
+                  className="px-6 py-3.5 text-base"
+                  disabled={busy}
+                  onClick={() => void finishWithChatgpt()}
+                  data-testid="sign-in-chatgpt"
+                >
+                  Sign in with ChatGPT
+                </PrimaryButton>
+                <button
+                  type="button"
+                  className="rounded self-start text-sm font-medium text-ink/65 underline-offset-4 transition-colors hover:text-lime hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-lime"
+                  onClick={() => setShowKey((v) => !v)}
+                  data-testid="toggle-api-key"
+                >
+                  {showKey ? "Hide API key option" : "Use your own API key instead"}
+                </button>
+                {showKey && (
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <input
+                      type="password"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="sk-…"
+                  aria-label="OpenAI API key"
+                  className="min-w-0 flex-1 rounded-xl border border-ink/15 bg-surface px-4 py-3 text-base text-ink outline-none placeholder:text-muted focus:border-lime/60 focus:ring-2 focus:ring-lime/10"
+                      data-testid="api-key-input"
+                      autoComplete="off"
+                    />
+                    <PrimaryButton
+                      tone="ghost"
+                      disabled={busy}
+                      onClick={() => void finishWithKey()}
+                      data-testid="continue-api-key"
+                    >
+                      Continue with key
+                    </PrimaryButton>
+                  </div>
+                )}
+                {authMsg && (
+                  <p className="whitespace-pre-wrap text-sm text-danger" data-testid="auth-error">
+                    {authMsg}
+                  </p>
+                )}
+            <p className="rounded-xl border border-ink/8 bg-surface/60 p-4 text-xs leading-relaxed text-muted">
+              {t("signin.setup")}
             </p>
-            <h1 className="font-display mt-4 text-[2.5rem] font-extrabold leading-[1.02] tracking-tight text-ink md:text-6xl">
-              {slide.title}
-            </h1>
-            <p className="mt-5 text-lg leading-relaxed text-ink/65 md:text-xl md:leading-relaxed">
-              {slide.body}
-            </p>
-          </motion.div>
-        </AnimatePresence>
-
-        {signInSlide && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.08 }}
-            className="mt-10 flex max-w-xl flex-col gap-3"
-            data-testid="sign-in-panel"
-          >
-            <PrimaryButton
-              className="px-6 py-3.5 text-lg"
-              disabled={busy}
-              onClick={() => void finishWithChatgpt()}
-              data-testid="sign-in-chatgpt"
-            >
-              Sign in with ChatGPT
+            <PrimaryButton tone="ghost" disabled={busy} onClick={() => void getApi().completeOnboarding()}>
+              Choose another provider or local model
             </PrimaryButton>
-            <button
-              type="button"
-              className="self-start text-sm font-semibold text-ink/45 underline-offset-2 hover:underline"
-              onClick={() => setShowKey((v) => !v)}
-              data-testid="toggle-api-key"
-            >
-              {showKey ? "Hide API key option" : "Use your own API key instead"}
-            </button>
-            {showKey && (
-              <div className="flex flex-col gap-2 sm:flex-row">
+              </motion.div>
+            )}
+
+            {writerSlide && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.08 }}
+                className="mt-8 flex max-w-xl flex-col gap-4"
+                data-testid="writer-onboarding"
+              >
                 <input
                   type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="sk-…"
-                  className="flex-1 rounded-2xl border border-ink/10 bg-white/80 px-4 py-3 text-base outline-none focus:border-ink/25"
-                  data-testid="api-key-input"
+                  value={anthropicKey}
+                  onChange={(e) => setAnthropicKey(e.target.value)}
+              placeholder={t("settings.writerPlaceholder")}
+              aria-label="Anthropic writing API key"
+              className="rounded-xl border border-ink/15 bg-surface px-4 py-3 text-base text-ink outline-none placeholder:text-muted focus:border-lime/60 focus:ring-2 focus:ring-lime/10"
+                  data-testid="onboarding-anthropic-key"
                   autoComplete="off"
                 />
-                <PrimaryButton
-                  tone="ghost"
-                  disabled={busy}
-                  onClick={() => void finishWithKey()}
-                  data-testid="continue-api-key"
-                >
-                  Continue with key
-                </PrimaryButton>
+                {writerMsg && (
+                  <p className="whitespace-pre-wrap text-sm text-danger" data-testid="writer-onboarding-msg">
+                    {writerMsg}
+                  </p>
+                )}
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <PrimaryButton
+                    className="px-6 py-3.5 text-base"
+                    disabled={busy}
+                    onClick={() => void saveWriterAndFinish()}
+                    data-testid="onboarding-writer-continue"
+                  >
+                    {anthropicKey.trim() ? "Save and continue" : "Continue without a key"}
+                  </PrimaryButton>
+                  {anthropicKey.trim() && (
+                    <PrimaryButton
+                      tone="ghost"
+                      className="px-6 py-3.5 text-base"
+                      disabled={busy}
+                      onClick={() => void skipWriterAndFinish()}
+                      data-testid="onboarding-writer-skip"
+                    >
+                      Skip
+                    </PrimaryButton>
+                  )}
+                </div>
+              </motion.div>
+            )}
+            <div className="relative mt-10 flex items-center justify-between gap-4 border-t border-ink/10 pt-6 sm:mt-12">
+              <div className="flex gap-2" aria-hidden>
+                {slides.map((s, i) => (
+                  <motion.span
+                    key={s.id}
+                    className={`h-1 rounded-full ${i === index ? "w-8 bg-lime" : i < index ? "w-4 bg-lime/35" : "w-4 bg-ink/15"}`}
+                    layout
+                    transition={{ type: "spring", stiffness: 400, damping: 28 }}
+                  />
+                ))}
               </div>
-            )}
-            {authMsg && (
-              <p className="whitespace-pre-wrap text-sm text-danger" data-testid="auth-error">
-                {authMsg}
-              </p>
-            )}
-            <p className="text-sm text-ink/45">
-              One-time setup on this PC: install Codex (`npm i -g @openai/codex`), then run{" "}
-              <span className="font-mono text-ink/60">codex login</span> — or skip that and paste an
-              API key above.
-            </p>
-          </motion.div>
-        )}
-
-        {writerSlide && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.08 }}
-            className="mt-10 flex max-w-xl flex-col gap-3"
-            data-testid="writer-onboarding"
-          >
-            <input
-              type="password"
-              value={anthropicKey}
-              onChange={(e) => setAnthropicKey(e.target.value)}
-              placeholder={t("settings.writerPlaceholder")}
-              className="rounded-2xl border border-ink/10 bg-white/80 px-4 py-3 text-base outline-none focus:border-ink/25"
-              data-testid="onboarding-anthropic-key"
-              autoComplete="off"
-            />
-            {writerMsg && (
-              <p className="whitespace-pre-wrap text-sm text-danger" data-testid="writer-onboarding-msg">
-                {writerMsg}
-              </p>
-            )}
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <PrimaryButton
-                className="px-6 py-3.5 text-lg"
-                disabled={busy}
-                onClick={() => void saveWriterAndFinish()}
-                data-testid="onboarding-writer-continue"
-              >
-                {anthropicKey.trim() ? "Save and continue" : "Continue without a key"}
-              </PrimaryButton>
-              {anthropicKey.trim() && (
-                <PrimaryButton
-                  tone="ghost"
-                  className="px-6 py-3.5 text-lg"
-                  disabled={busy}
-                  onClick={() => void skipWriterAndFinish()}
-                  data-testid="onboarding-writer-skip"
-                >
-                  Skip
-                </PrimaryButton>
-              )}
+              <div className="flex gap-2">
+                {index > 0 && !writerSlide && (
+                  <PrimaryButton tone="ghost" onClick={() => setIndex((i) => i - 1)}>
+                    Back
+                  </PrimaryButton>
+                )}
+                {!signInSlide && !writerSlide && !last && (
+                  <PrimaryButton
+                    className="px-6"
+                    onClick={() => setIndex((i) => i + 1)}
+                    data-testid="onboarding-next"
+                  >
+                    Continue
+                  </PrimaryButton>
+                )}
+              </div>
             </div>
-          </motion.div>
-        )}
-      </div>
+          </div>
 
-      <div className="relative flex items-center justify-between gap-4">
-        <div className="flex gap-2">
-          {slides.map((s, i) => (
-            <motion.span
-              key={s.id}
-              className={`h-2 rounded-full ${i === index ? "w-6 bg-ink" : "w-2 bg-ink/20"}`}
-              layout
-              transition={{ type: "spring", stiffness: 400, damping: 28 }}
+          <div
+            className="onboarding-art pointer-events-none relative hidden aspect-[0.94] max-h-[590px] w-full overflow-hidden rounded-[28px] border border-ink/10 bg-[#1b1b1b] lg:flex lg:items-center lg:justify-center"
+            aria-hidden
+          >
+            <div
+              className="absolute inset-0 opacity-35"
+              style={{ backgroundImage: "linear-gradient(rgba(255,255,255,0.09) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.09) 1px, transparent 1px)", backgroundSize: "32px 32px" }}
             />
-          ))}
-        </div>
-        <div className="flex gap-2">
-          {index > 0 && !writerSlide && (
-            <PrimaryButton tone="ghost" onClick={() => setIndex((i) => i - 1)}>
-              Back
-            </PrimaryButton>
-          )}
-          {!signInSlide && !writerSlide && !last && (
-            <PrimaryButton
-              className="px-6"
-              onClick={() => setIndex((i) => i + 1)}
-              data-testid="onboarding-next"
-            >
-              Continue
-            </PrimaryButton>
-          )}
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_20%,#1b1b1b_85%)]" />
+            <div className="absolute left-7 top-7 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.2em] text-ink/40">
+              <span className="h-1.5 w-1.5 rounded-full bg-lime" />
+              Lalime
+            </div>
+            <div className="absolute right-7 top-7 font-mono text-[10px] tracking-widest text-ink/25">0{index + 1} / 04</div>
+            <div className="absolute h-[66%] w-[75%] rounded-full border border-lime/10" />
+            <div className="absolute h-[46%] w-[52%] rounded-full border border-lime/20" />
+            <div className="absolute h-52 w-52 rounded-full bg-lime/10 blur-[65px]" />
+            <div className="relative flex h-36 w-36 rotate-[-8deg] items-center justify-center rounded-[32px] border border-lime/25 bg-[#262626] shadow-[0_24px_80px_rgba(0,0,0,0.45)] xl:h-44 xl:w-44">
+              <div className="rotate-[8deg]"><Logo size="hero" showWordmark={false} /></div>
+            </div>
+            <div className="absolute left-[11%] top-[32%] h-3 w-3 rounded-full border-[3px] border-[#1b1b1b] bg-lime shadow-[0_0_0_1px_rgba(43,197,5,0.25)]" />
+            <div className="absolute bottom-[27%] right-[18%] h-2 w-2 rounded-full bg-lime/70" />
+            <div className="absolute bottom-8 left-7 right-7 flex items-end justify-between border-t border-ink/10 pt-5">
+              <div className="flex gap-1.5">
+                {[12, 22, 16, 30, 20, 36, 26, 18, 28, 14].map((height, i) => (
+                  <span key={i} className="w-1.5 self-end rounded-sm bg-lime/35" style={{ height }} />
+                ))}
+              </div>
+              <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/35">{slide.eyebrow}</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>

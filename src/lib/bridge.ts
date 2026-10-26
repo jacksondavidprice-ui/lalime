@@ -24,7 +24,7 @@ export function getApi(): LalimeApi {
       signInChatgpt: async () => engine.signInChatgpt(),
       signInApiKey: async (key) => engine.signInApiKey(key),
       sendMessage: async (text) => engine.sendMessage(text),
-      respondApproval: async (choice) => engine.respondApproval(choice),
+      respondApproval: async (choice, actionId) => engine.respondApproval(choice, actionId),
       undo: async (id) => engine.undo(id),
       stop: async () => engine.stop(),
       dismissBlocked: async () => engine.dismissBlocked(),
@@ -39,6 +39,10 @@ export function getApi(): LalimeApi {
         ok: false,
         message: "Open the desktop app to check an Anthropic key.",
       }),
+      updateSettings: async () => ({ ok: false, message: "Open the desktop app to save settings." }),
+      connectProvider: async () => ({ ok: false, message: "Open the desktop app to connect a provider." }),
+      disconnect: async () => {},
+      copyText: async (text) => navigator.clipboard.writeText(text),
     };
   }
 
@@ -67,5 +71,9 @@ export function getApi(): LalimeApi {
       ok: false,
       message: "Open the desktop app to check an Anthropic key.",
     }),
+    updateSettings: async () => ({ ok: false, message: "Open the desktop app to save settings." }),
+    connectProvider: async () => ({ ok: false, message: "Open the desktop app to connect a provider." }),
+    disconnect: async () => {},
+    copyText: async (text) => navigator.clipboard.writeText(text),
   };
 }

@@ -5,7 +5,15 @@
   },
   "errors.codexMissing": {
     "intent": "Explain Codex CLI is missing in plain language",
-    "facts": ["install once", "codex login or API key"]
+    "facts": ["ChatGPT requires Codex installation", "sign in inside Lalime after installation", "terminal login does not connect Lalime", "API key or local model alternative"]
+  },
+  "signin.setup": {
+    "intent": "Explain the separate in-app ChatGPT connection",
+    "facts": ["ChatGPT requires Codex installation", "sign in inside Lalime", "terminal login does not connect Lalime", "API keys and local models are alternatives"]
+  },
+  "signin.apiError": {
+    "intent": "Explain an API key connection failure",
+    "facts": ["check the key", "try again", "API key connection does not require Codex installation"]
   },
   "errors.handsMissing": {
     "intent": "Explain computer control is off because Hands.exe is missing",
@@ -25,11 +33,11 @@
   },
   "onboarding.guardian.title": {
     "intent": "Reassure that dangerous actions need permission",
-    "facts": ["asks before risky steps", "blocks dangerous commands", "undo nearby"]
+    "facts": ["asks before risky steps", "blocks dangerous commands", "reports changes"]
   },
   "onboarding.guardian.body": {
     "intent": "Guardian explanation",
-    "facts": ["plain English ask", "dangerous blocked", "Recycle Bin undo"]
+    "facts": ["plain English ask", "dangerous blocked", "files sent to the Recycle Bin can be restored there manually", "no automatic Undo for native file actions"]
   },
   "onboarding.signin.title": {
     "intent": "Ask them to use their own account",
@@ -84,8 +92,8 @@
     "facts": []
   },
   "empty.body": {
-    "intent": "Reassure about plan, ask, undo",
-    "facts": ["everyday words", "shows plan", "asks before risky", "Undo nearby"]
+    "intent": "Explain the plan, approval, and change report",
+    "facts": ["everyday words", "shows plan", "asks before risky", "reports what changed"]
   },
   "gate.title": {
     "intent": "Signed-out gate title",
@@ -126,5 +134,360 @@
   "blocked.eyebrow": {
     "intent": "Blocked card label",
     "facts": ["Guardian blocked"]
-  }
+  },
+  "approval.eyebrow": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Guardian needs your OK"
+    ]
+  },
+  "approval.doIt": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Do it"
+    ]
+  },
+  "approval.notNow": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Not now"
+    ]
+  },
+  "approval.skipNote": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "This step will not run. Lalime may continue with other steps."
+    ]
+  },
+  "approval.notNowLabel": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "If you choose Not now"
+    ]
+  },
+  "approval.tier": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Risk level {tier}"
+    ]
+  },
+  "approval.items": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "{count} items"
+    ]
+  },
+  "approval.item": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "1 item"
+    ]
+  },
+  "approval.recycle": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "To the Recycle Bin"
+    ]
+  },
+  "approval.targets": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "What this step touches"
+    ]
+  },
+  "approval.setting": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Setting to open"
+    ]
+  },
+  "approval.control": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Control to use"
+    ]
+  },
+  "approval.showDetails": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Show details"
+    ]
+  },
+  "approval.hideDetails": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Hide details"
+    ]
+  },
+  "approval.error": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Your choice could not be sent. Please try again."
+    ]
+  },
+  "approval.sending": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Sending your choice..."
+    ]
+  },
+  "approval.holdButton": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Hold to confirm"
+    ]
+  },
+  "approval.holdHint": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Hold the button, Enter, or Space for 1.5 seconds. Release when ready to confirm."
+    ]
+  },
+  "approval.holdProgress": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Keep holding..."
+    ]
+  },
+  "approval.holdReady": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Release to confirm."
+    ]
+  },
+  "approval.prepare": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Prepare confirmation"
+    ]
+  },
+  "approval.prepareHint": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Prepare, wait two seconds, then choose Confirm this step. Nothing is approved automatically."
+    ]
+  },
+  "approval.preparing": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Ready in {seconds}..."
+    ]
+  },
+  "approval.confirm": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Confirm this step"
+    ]
+  },
+  "approval.confirmReady": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Ready for your confirmation."
+    ]
+  },
+  "blocked.safer": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Try a safer way"
+    ]
+  },
+  "blocked.saferPrompt": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Please suggest a safer way to achieve my last request. Explain the alternative before making changes, and keep all Guardian checks in place."
+    ]
+  },
+  "blocked.wait": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "You can ask for a safer approach when the current task finishes."
+    ]
+  },
+  "blocked.error": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "That request could not be sent. Please try again."
+    ]
+  },
+  "stop.label": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Stop"
+    ]
+  },
+  "stop.shortcut": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Ctrl+Alt+Esc"
+    ]
+  },
+  "stop.title": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Stop Lalime (Ctrl+Alt+Esc in the desktop app)"
+    ]
+  },
+  "stop.error": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "The stop request could not be sent. Try Stop again."
+    ]
+  },
+  "stopped.title": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Stopped. You are in control."
+    ]
+  },
+  "stopped.body": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Lalime will not start another step until you send a message. Work already started may still finish; Stop does not undo earlier changes."
+    ]
+  },
+  "stopped.hint": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Continue prepares a message for you to review and send. Start over clears your draft for a new request. Your history stays here."
+    ]
+  },
+  "stopped.continue": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Continue"
+    ]
+  },
+  "stopped.startOver": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Start over"
+    ]
+  },
+  "approval.twoStep": {
+    "intent": "Offer confirmation without a sustained press",
+    "facts": ["Use two-step confirmation", "arming does not approve", "a separate confirmation is required"]
+  },
+  "blocked.details": {
+    "intent": "Reveal technical details only when requested",
+    "facts": ["Details for helpers"]
+  },
+  "stopped.prompt": {
+    "intent": "State this trust control clearly",
+    "facts": [
+      "Before continuing my last request, review what has already finished and explain the remaining steps. Keep all Guardian checks in place."
+    ]
+  },
+  "timeline.title": {"intent":"Describe this control in plain language","facts":["Steps for this turn"]},
+  "timeline.pending": {"intent":"Describe this control in plain language","facts":["Waiting"]},
+  "timeline.running": {"intent":"Describe this control in plain language","facts":["In progress"]},
+  "timeline.done": {"intent":"Describe this control in plain language","facts":["Done"]},
+  "timeline.failed": {"intent":"Describe this control in plain language","facts":["Could not finish"]},
+  "timeline.skipped": {"intent":"Describe this control in plain language","facts":["Skipped"]},
+  "working.elapsed": {"intent":"Describe this control in plain language","facts":["Still working"]},
+  "working.seconds": {"intent":"Describe this control in plain language","facts":["s"]},
+  "reply.read": {"intent":"Describe this control in plain language","facts":["Read aloud"]},
+  "reply.stopReading": {"intent":"Describe this control in plain language","facts":["Stop reading"]},
+  "reply.speechUnavailable": {"intent":"Describe this control in plain language","facts":["Read aloud is unavailable on this device."]},
+  "reply.speechError": {"intent":"Describe this control in plain language","facts":["Could not read this aloud. Try again."]},
+  "reply.simpler": {"intent":"Describe this control in plain language","facts":["Say it simpler"]},
+  "reply.simplerPrompt": {"intent":"Describe this control in plain language","facts":["Please explain this answer in simpler words, one step at a time:"]},
+  "reply.sendError": {"intent":"Describe this control in plain language","facts":["Could not send that message. Please try again."]},
+  "followups.label": {"intent":"Describe this control in plain language","facts":["Keep going"]},
+  "followups.explain": {"intent":"Describe this control in plain language","facts":["Explain this step by step"]},
+  "followups.next": {"intent":"Describe this control in plain language","facts":["What can I try next?"]},
+  "followups.check": {"intent":"Describe this control in plain language","facts":["How can I check the result?"]},
+  "followups.activity": {"intent":"Describe this control in plain language","facts":["Explain the latest activity"]},
+  "followups.activityPrompt": {"intent":"Describe this control in plain language","facts":["Please explain this activity in plain language:"]},
+  "boot.status": {"intent":"Describe this control in plain language","facts":["Getting things ready"]},
+  "approval.command": {"intent":"Describe this control in plain language","facts":["Exact command"]},
+  "approval.payload": {"intent":"Describe this control in plain language","facts":["Exact action"]},
+  "approval.expandPayload": {"intent":"Describe this control in plain language","facts":["Show full action"]},
+  "approval.collapsePayload": {"intent":"Describe this control in plain language","facts":["Show less"]},
+  "approval.explanation": {"intent":"Describe this control in plain language","facts":["Assistant explanation"]},
+  "approval.cwd": {"intent":"Describe this control in plain language","facts":["Working folder"]},
+  "approval.title.shell": {"intent":"Describe this control in plain language","facts":["Run a shell command?"]},
+  "approval.title.powershell": {"intent":"Describe this control in plain language","facts":["Run a PowerShell command?"]},
+  "approval.title.file_read": {"intent":"Describe this control in plain language","facts":["Read these items?"]},
+  "approval.title.file_write": {"intent":"Describe this control in plain language","facts":["Change these items?"]},
+  "approval.title.file_move": {"intent":"Describe this control in plain language","facts":["Move these items?"]},
+  "approval.title.file_delete": {"intent":"Describe this control in plain language","facts":["Delete these items?"]},
+  "approval.title.recycle": {"intent":"Describe this control in plain language","facts":["Move these items to the Recycle Bin?"]},
+  "approval.title.ui_click": {"intent":"Describe this control in plain language","facts":["Click a control on your computer?"]},
+  "approval.title.ui_type": {"intent":"Describe this control in plain language","facts":["Type text into a window?"]},
+  "approval.title.open_settings": {"intent":"Describe this control in plain language","facts":["Open a Windows setting?"]},
+  "approval.title.screenshot": {"intent":"Describe this control in plain language","facts":["Share a screen capture?"]},
+  "approval.title.sysinfo": {"intent":"Describe this control in plain language","facts":["Read computer information?"]},
+  "approval.queueUnknown": {"intent":"Describe this control in plain language","facts":["Reviewing one step at a time. More steps may need your approval."]},
+  "about.title": {"intent":"Describe this control in plain language","facts":["About Lalime"]},
+  "about.author": {"intent":"Describe this control in plain language","facts":["Made by Jackson Price -- open source"]},
+  "about.version": {"intent":"Describe this control in plain language","facts":["Version {version}"]},
+  "about.license": {"intent":"Describe this control in plain language","facts":["MIT License"]},
+  "about.source": {"intent":"Describe this control in plain language","facts":["View source on GitHub"]},
+  "about.body": {"intent":"Describe this control in plain language","facts":["Your computer, done for you, safely."]},
+  "approval.allowTask": {"intent":"Explain this control and its limits","facts":["Allow for this task"]},
+  "approval.allowScope": {"intent":"Explain this control and its limits","facts":["Lalime can repeat this exact step without asking until this task ends."]},
+  "approval.holdUnavailable": {"intent":"Explain this control and its limits","facts":["This connection cannot prepare confirmation. Try again or choose Not now."]},
+  "changes.title": {"intent":"Explain this control and its limits","facts":["What Lalime did this turn"]},
+  "changes.history": {"intent":"Explain this control and its limits","facts":["Earlier activity"]},
+  "changes.recorded": {"intent":"Explain this control and its limits","facts":["Recorded activity"]},
+  "changes.undo": {"intent":"Explain this control and its limits","facts":["Undo"]},
+  "changes.undoAll": {"intent":"Explain this control and its limits","facts":["Undo all available"]},
+  "changes.restoring": {"intent":"Explain this control and its limits","facts":["Restoring..."]},
+  "changes.restored": {"intent":"Explain this control and its limits","facts":["Restore verified"]},
+  "changes.failed": {"intent":"Explain this control and its limits","facts":["Could not restore this change."]},
+  "changes.unverified": {"intent":"Explain this control and its limits","facts":["The restore was not verified. Please try again."]},
+  "changes.retry": {"intent":"Explain this control and its limits","facts":["Try Undo again"]},
+  "changes.noUndo": {"intent":"Explain this control and its limits","facts":["Undo is not available for this entry."]},
+  "changes.wait": {"intent":"Explain this control and its limits","facts":["Finish or stop the current task before undoing changes."]},
+  "changes.stopUndo": {"intent":"Explain this control and its limits","facts":["Stop remaining restores"]},
+  "grants.title": {"intent":"Explain this control and its limits","facts":["Allowed for this task"]},
+  "grants.scope": {"intent":"Explain this control and its limits","facts":["Only the exact actions shown are allowed during this task. Stop or a new task clears these allowances."]},
+  "grants.revoke": {"intent":"Explain this control and its limits","facts":["Revoke"]},
+  "grants.revoking": {"intent":"Explain this control and its limits","facts":["Revoking..."]},
+  "grants.error": {"intent":"Explain this control and its limits","facts":["Could not revoke this allowance. Try again."]},
+  "grants.unavailable": {"intent":"Explain this control and its limits","facts":["Revoking is unavailable in this session."]},
+  "approval.queueWaiting": {"intent":"Show the authoritative remaining approval count","facts":["Includes queued approvals after the visible action"]},
+  "approval.summary": {"intent":"Explain approval state using host evidence","facts":["Action summary"]},
+  "approval.holdBulk": {"intent":"Explain approval state using host evidence","facts":["This moves {count} items. Press and hold to confirm."]},
+  "approval.holdAfterBlock": {"intent":"Explain approval state using host evidence","facts":["Lalime blocked something risky earlier in this task, so the next changes need a press-and-hold."]},
+  "approval.queueReview": {"intent":"Explain approval state using host evidence","facts":["Reviewing one step at a time"]},
+  "approval.queuePreview": {"intent":"Explain approval state using host evidence","facts":["The next steps will appear here one at a time, with their exact details before you decide."]},
+  "approval.invalid": {"intent":"Explain approval state using host evidence","facts":["No longer valid"]},
+  "approval.confirmed": {"intent":"Explain approval state using host evidence","facts":["Confirmed"]},
+  "approval.allowCommandScope": {"intent":"Explain exact task allowance and how to revoke it","facts":["Lalime can run this exact command again without asking until this task ends."]},
+  "approval.allowFileScope": {"intent":"Explain exact task allowance and how to revoke it","facts":["Lalime can repeat this exact action on these same items without asking until this task ends."]},
+  "approval.manageGrants": {"intent":"Explain exact task allowance and how to revoke it","facts":["Open Plan and activity to review or revoke allowances."]},
+  "approval.queueViewOnly": {"intent":"Describe the host-provided read-only approval queue","facts":["Preview only. Decide on each step when it becomes current."]},
+  "approval.queueLabel": {"intent":"Describe the host-provided read-only approval queue","facts":["Approval queue"]},
+  "approval.queueCurrent": {"intent":"Describe the host-provided read-only approval queue","facts":["Reviewing now"]},
+  "approval.queuePosition": {"intent":"Describe the host-provided read-only approval queue","facts":["Step {position}"]},
+  "approval.queueCanAllow": {"intent":"Describe the host-provided read-only approval queue","facts":["Can allow for this task"]},
+  "approval.grantUnavailable": {"intent":"Explain the available user control","facts":["Lalime will ask each time for this one."]},
+  "composer.recall": {"intent":"Explain the available user control","facts":["Up arrow to edit your last request"]},
+  "approval.truncatedCount": {"intent":"Label the host count of omitted preview text","facts":["{marker} characters of preview text."]},
+  "approval.truncated": {"intent":"Explain a shortened preview without a count","facts":["Preview shortened. Full text is available below."]},
+  "approval.fullCommand": {"intent":"Label the read-only full command region","facts":["Full command"]},
+  "approval.showFullCommand": {"intent":"Open the complete escaped command","facts":["Show full command"]},
+  "approval.hideFullCommand": {"intent":"Close the complete escaped command","facts":["Hide full command"]},
+  "approval.queueKeys": {"intent":"Explain keyboard review without approving an entry","facts":["Use Up and Down to review, Home and End to jump, and Escape to close this preview."]},
+  "approval.queueRemaining": {"intent":"Count pending approvals beyond the visible preview","facts":["and {count} more waiting"]},
+  "approval.approveOnce": {"intent":"Explain that an unavailable task grant still permits one approval","facts":["You can still approve it once."]},
+  "changes.afterUndo": {"intent":"Label the result of withdrawing consent during Undo","facts":["After Undo"]},
+  "changes.nextApproval": {"intent":"Identify a currently displayed decision after Undo","facts":["Another step is waiting for your approval."]},
+  "changes.nextPreparing": {"intent":"Explain pending approvals before the next card arrives","facts":["Lalime is preparing the next step for review."]},
+  "changes.nextWorking": {"intent":"Describe work that continues after Undo","facts":["Lalime is still working. It will ask before the next important step."]},
+  "changes.nextNone": {"intent":"Describe an empty host approval queue after Undo","facts":["No approvals are waiting."]},
+  "changes.nextReady": {"intent":"Invite the next request without inferring an unknown queue count","facts":["You can continue when you are ready."]},
+  "changes.partlyCount": {"intent":"Report exact host counts without claiming full restore","facts":["Partly undone: {restored} of {total} items are back."]},
+  "changes.partly": {"intent":"Explain partial restoration when counts are unavailable","facts":["Partly undone. Some items are back, but this change is not finished."]},
+  "changes.batchStopped": {"intent":"Explain why an Undo-all sequence paused at an incomplete restore","facts":["Undo all stopped here. Review this result before continuing."]},
+  "empty.reassuranceTitle": {"intent":"Label first-use guidance","facts":["Before you begin"]},
+  "empty.reassurance": {"intent":"Describe review and qualify Undo availability","facts":["You review important steps before they run. Look for Undo beside changes that Lalime can restore."]},
+  "empty.draftHint": {"intent":"Explain that suggestions prepare an editable draft","facts":["Choose an idea below to draft a message. You can edit it before sending."]},
+  "changes.recordOne": {"intent":"Count current activity without claiming task success","facts":["1 recorded step."]},
+  "changes.recordCount": {"intent":"Count current activity without claiming task success","facts":["{count} recorded steps."]},
+  "changes.undoCount": {"intent":"Count eligible Undo controls","facts":["Undo available for {count}."]},
+  "changes.undoNone": {"intent":"Describe an absence of eligible Undo controls","facts":["No Undo actions available."]},
+  "changes.restoreOne": {"intent":"Count only verified complete restores","facts":["1 restore verified."]},
+  "changes.restoreCount": {"intent":"Count only verified complete restores","facts":["{count} restores verified."]}
 }

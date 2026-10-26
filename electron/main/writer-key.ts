@@ -44,8 +44,7 @@ export function loadWriterKey(): string | null {
   try {
     const buf = readFileSync(file);
     if (!safeStorage.isEncryptionAvailable()) {
-      memoryKey = buf.toString("utf8");
-      return memoryKey;
+      return null;
     }
     memoryKey = safeStorage.decryptString(buf);
     return memoryKey;

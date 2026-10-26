@@ -17,8 +17,15 @@ const api: LalimeApi = {
   signInChatgpt: () => ipcRenderer.invoke(IPC.signInChatgpt),
   signInApiKey: (apiKey: string) => ipcRenderer.invoke(IPC.signInApiKey, apiKey),
   sendMessage: (text: string) => ipcRenderer.invoke(IPC.sendMessage, text),
-  respondApproval: (choice: ApprovalChoice) =>
-    ipcRenderer.invoke(IPC.respondApproval, choice),
+  respondApproval: (choice: ApprovalChoice, actionId?: string) =>
+    ipcRenderer.invoke(IPC.respondApproval, choice, actionId),
+  updateSettings: (settings) => ipcRenderer.invoke(IPC.updateSettings, settings),
+  beginApprovalHold: (actionId) => ipcRenderer.invoke(IPC.beginApprovalHold, actionId),
+  cancelApprovalHold: (actionId) => ipcRenderer.invoke(IPC.cancelApprovalHold, actionId),
+  revokeTaskGrant: (grantId) => ipcRenderer.invoke(IPC.revokeTaskGrant, grantId),
+  connectProvider: (apiKey) => ipcRenderer.invoke(IPC.connectProvider, apiKey),
+  disconnect: () => ipcRenderer.invoke(IPC.disconnect),
+  copyText: (text) => ipcRenderer.invoke(IPC.copyText, text),
   undo: (activityId: string) => ipcRenderer.invoke(IPC.undo, activityId),
   stop: () => ipcRenderer.invoke(IPC.stop),
   dismissBlocked: () => ipcRenderer.invoke(IPC.dismissBlocked),

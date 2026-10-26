@@ -36,8 +36,10 @@ export interface ProposedAction {
   userRequest: string;
   /** Optional extra context (plan step label, etc.). */
   summary?: string;
-  /** True when justification came only from screen/web/file content. */
+  /** Untrusted provenance. Without a source, policy treats it as instruction-only justification. */
   fromUntrustedContent?: boolean;
+  /** Set by the host after a screen read; observation requires fresh consent. */
+  untrustedContentSource?: "screen_observation";
 }
 
 export interface GuardianDecision {
@@ -56,7 +58,14 @@ export interface GuardianDecision {
   reviewerNote?: string;
 }
 
-export type ApprovalChoice = "do_it" | "not_now" | "allow_for_task";
+export type ApprovalChoice = "do_it" | "not_now" | "allow_for_task" | "hold_confirmed";
+
+export interface TaskGrant {
+  id: string;
+  kind: ActionKind;
+  /** Exact approved operation and target, never a whole action category. */
+  target: string;
+}
 
 export interface PlanStep {
   id: string;
@@ -79,6 +88,16 @@ export interface ActivityEntry {
   undoable: boolean;
   undone?: boolean;
   actionId?: string;
+  /** Optional counts describe complete journal items restored, including earlier retry attempts. */
+  undoResult?: ({ status: "restored" } | { status: "failed"; reason: string }) & { restored?: number; total?: number };
+  /** Display-only record of consent withdrawn when Undo started. Text is escaped and capped at 4096 characters. */
+  approvalWithdrawal?: {
+    actionId: string;
+    summary: string;
+    reason: "user_undo";
+    message: string;
+    withdrawnCount: number;
+  };
 }
 
 export interface PendingApproval {
@@ -87,6 +106,30 @@ export interface PendingApproval {
   /** Optional Deliberate gloss — never changes the Guardian decision. */
   whatHappens?: string;
   undoNote?: string;
+  /** Model-supplied claim. Display as "Assistant's explanation", not a headline. */
+  assistantExplanation?: string;
+  canAllowForTask?: boolean;
+  /** Host reason that this action needs individual approval. */
+  grantUnavailableReason?: string;
+  /** True when the escaped display summary was capped at enqueue. */
+  summaryTruncated?: boolean;
+  /** UTF-16 length of the escaped display summary before the cap. */
+  summaryFullLength?: number;
+}
+
+/** Display-only consent queue entry. It does not authorize an action. */
+export interface ApprovalQueueEntry {
+  readonly actionId: string;
+  readonly kind: ActionKind;
+  readonly summary: string;
+  readonly tier: RiskTier;
+  readonly canAllowForTask: boolean;
+  /** Host reason that this action needs individual approval. */
+  readonly grantUnavailableReason?: string;
+  /** True when the escaped display summary was capped at enqueue. */
+  readonly summaryTruncated?: boolean;
+  /** UTF-16 length of the escaped display summary before the cap. */
+  readonly summaryFullLength?: number;
 }
 
 export interface WriterStatus {
@@ -101,8 +144,9 @@ export type AppMode = "demo" | "live";
 
 export type AuthStatus =
   | { state: "signed_out" }
+  | { state: "signing_in" }
   | { state: "demo" }
-  | { state: "signed_in"; email?: string; method: "chatgpt" | "api_key" }
+  | { state: "signed_in"; email?: string; method: "chatgpt" | "api_key" | "local"; providerId?: string }
   | { state: "error"; message: string };
 
 export interface HandsStatus {
@@ -115,6 +159,12 @@ export interface HandsStatus {
 }
 
 export interface AppSnapshot {
+  taskGrants?: TaskGrant[];
+  /** Exact pending count; it can exceed the number of preview entries. */
+  pendingApprovalCount?: number;
+  /** First 50 pending entries in FIFO order, including the current card first. */
+  approvalQueue?: readonly ApprovalQueueEntry[];
+  settings?: import("./settings.js").AppSettings;
   mode: AppMode;
   auth: AuthStatus;
   onboardingComplete: boolean;

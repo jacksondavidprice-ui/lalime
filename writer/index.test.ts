@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { WriterService } from "./index.js";
 import type { FactsPacket } from "./facts.js";
 
@@ -38,6 +38,45 @@ function mockReplyTransport(text: string) {
 }
 
 describe("WriterService", () => {
+  it("does not start a paid repair after cancellation during the first reply", async () => {
+    const controller = new AbortController();
+    const fetchImpl = vi.fn(mockReplyTransport("This sentence needs repair. ".repeat(40)));
+    const writer = new WriterService({ apiKey: FAKE_KEY, fetchImpl });
+    await writer.composeReply(facts, {
+      fallbackText: "Original reply.", signal: controller.signal,
+      onDelta: () => controller.abort(),
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not start an approval explanation after cancellation", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const fetchImpl = vi.fn(mockReplyTransport("{}"));
+    const writer = new WriterService({ apiKey: FAKE_KEY, fetchImpl });
+    const result = await writer.explainApproval({ plainEnglish: "Change?", details: "action", undoable: false }, controller.signal);
+    expect(result.used).toBe(false);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("cancels an approval explanation when the caller stops", async () => {
+    const controller = new AbortController();
+    let requestSignal: AbortSignal | null | undefined;
+    const writer = new WriterService({ apiKey: FAKE_KEY, approvalTimeoutMs: 100,
+      fetchImpl: async (_url, init) => {
+        requestSignal = init.signal;
+        controller.abort();
+        return new Promise<Response>((_resolve, reject) => {
+          if (init.signal?.aborted) reject(new Error("aborted"));
+          else init.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+        });
+      },
+    });
+    const pending = writer.explainApproval({ plainEnglish: "Change?", details: "action", undoable: false }, controller.signal);
+    expect(requestSignal?.aborted).toBe(true);
+    expect((await pending).used).toBe(false);
+  });
+
   it("composes a deliberate reply from facts", async () => {
     const writer = new WriterService({
       apiKey: FAKE_KEY,

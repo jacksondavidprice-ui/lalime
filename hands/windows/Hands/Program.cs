@@ -15,11 +15,15 @@ namespace Lalime.Hands;
 
 internal static class Program
 {
-    private static readonly Dictionary<string, Action> Journal = new();
-
     [STAThread]
     private static void Main(string[] args)
     {
+        WindowsProcessLifetime.ContainCurrentProcess();
+        if (args.Contains("--powershell-worker"))
+        {
+            RunPowerShellWorker();
+            return;
+        }
         if (args.Contains("--stdio") || args.Length == 0)
         {
             RunStdio();
@@ -34,11 +38,12 @@ internal static class Program
         while ((line = Console.ReadLine()) != null)
         {
             if (string.IsNullOrWhiteSpace(line)) continue;
+            var id = "";
             try
             {
                 using var doc = JsonDocument.Parse(line);
                 var root = doc.RootElement;
-                var id = root.GetProperty("id").GetString() ?? "";
+                id = root.GetProperty("id").GetString() ?? "";
                 var method = root.GetProperty("method").GetString() ?? "";
                 var paramsEl = root.TryGetProperty("params", out var p) ? p : default;
                 var response = Dispatch(method, paramsEl);
@@ -47,7 +52,7 @@ internal static class Program
             }
             catch (Exception ex)
             {
-                Console.WriteLine(JsonSerializer.Serialize(new { id = "", ok = false, output = ex.Message }));
+                Console.WriteLine(JsonSerializer.Serialize(new { id, ok = false, output = ex.Message }));
             }
         }
     }
@@ -57,13 +62,12 @@ internal static class Program
         {
             "powershell.astCheck" => AstCheck(Str(paramsEl, "command")),
             "powershell.run" => RunPowerShell(Str(paramsEl, "command"), Str(paramsEl, "summary")),
-            "files.recycle" => Recycle(paramsEl),
             "settings.open" => OpenSettings(Str(paramsEl, "uri")),
             "screen.capture" => CaptureScreen(),
             "uia.listWindows" => ListWindows(),
             "uia.list" => ListElements(Str(paramsEl, "windowTitle")),
             "uia.click" => Click(Str(paramsEl, "name"), Str(paramsEl, "windowTitle")),
-            "uia.type" => TypeText(Str(paramsEl, "text")),
+            "uia.type" => TypeText(Str(paramsEl, "text"), Str(paramsEl, "windowTitle")),
             "journal.undo" => Undo(Str(paramsEl, "journalId")),
             "stop" => Ok("stopped"),
             _ => Fail($"Unknown method: {method}")
@@ -88,54 +92,102 @@ internal static class Program
         var check = AstCheck(command);
         if (check["ok"] is false) return check;
 
+        // A separate job must end with each action, even when its shell exits first.
         var psi = new System.Diagnostics.ProcessStartInfo
         {
-            FileName = "powershell.exe",
-            Arguments = "-NoProfile -NonInteractive -Command " + Quote(command),
+            FileName = Environment.ProcessPath ?? throw new InvalidOperationException("Hands executable path is unavailable."),
+            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        psi.ArgumentList.Add("--powershell-worker");
+        using var worker = System.Diagnostics.Process.Start(psi);
+        if (worker is null) return Fail("Could not start the PowerShell worker.");
+        try
+        {
+            var stdout = worker.StandardOutput.ReadToEndAsync();
+            var stderr = worker.StandardError.ReadToEndAsync();
+            worker.StandardInput.WriteLine(JsonSerializer.Serialize(command));
+            worker.StandardInput.Close();
+            if (!worker.WaitForExit(25_000))
+                return Fail("PowerShell worker timed out and was stopped. Completed changes cannot be undone automatically.");
+            if (!Task.WaitAll(new Task[] { stdout, stderr }, 1_000))
+                return Fail("PowerShell worker output did not close.");
+            if (worker.ExitCode != 0) return Fail("PowerShell worker failed. Its child processes were stopped.");
+            return JsonSerializer.Deserialize<Dictionary<string, object?>>(stdout.Result)
+                ?? Fail("PowerShell worker returned no result.");
+        }
+        finally
+        {
+            if (!worker.HasExited)
+            {
+                worker.Kill(entireProcessTree: true);
+                worker.WaitForExit(1_000);
+            }
+        }
+    }
+
+    private static void RunPowerShellWorker()
+    {
+        Dictionary<string, object?> response;
+        try
+        {
+            var command = JsonSerializer.Deserialize<string>(Console.ReadLine() ?? "")
+                ?? throw new InvalidOperationException("PowerShell command is required.");
+            response = ExecutePowerShell(command);
+        }
+        catch (Exception ex)
+        {
+            response = Fail(ex.Message);
+        }
+        Console.WriteLine(JsonSerializer.Serialize(response));
+        // Main returns immediately. The OS then closes this worker's job handle.
+    }
+
+    private static Dictionary<string, object?> ExecutePowerShell(string command)
+    {
+        var check = AstCheck(command);
+        if (check["ok"] is false) return check;
+        var psi = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "powershell.exe",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        psi.ArgumentList.Add("-NoProfile");
+        psi.ArgumentList.Add("-NonInteractive");
+        psi.ArgumentList.Add("-Command");
+        psi.ArgumentList.Add(command);
         using var proc = System.Diagnostics.Process.Start(psi);
         if (proc is null) return Fail("Could not start PowerShell");
-        var stdout = proc.StandardOutput.ReadToEnd();
-        var stderr = proc.StandardError.ReadToEnd();
-        proc.WaitForExit(60_000);
-        var jid = "j_" + Guid.NewGuid().ToString("N")[..8];
-        Journal[jid] = () => { };
+        var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+        var stderrTask = proc.StandardError.ReadToEndAsync();
+        // Leave time for the bridge to receive the failure before its own deadline.
+        if (!proc.WaitForExit(20_000))
+        {
+            proc.Kill(entireProcessTree: true);
+            proc.WaitForExit(3_000);
+            return Fail("PowerShell timed out and was stopped. Completed changes cannot be undone automatically.");
+        }
+        if (!Task.WaitAll(new Task[] { stdoutTask, stderrTask }, 3_000))
+            return Fail("PowerShell output did not close. Completed changes cannot be undone automatically.");
+        var stdout = stdoutTask.Result;
+        var stderr = stderrTask.Result;
         return new Dictionary<string, object?>
         {
             ["ok"] = proc.ExitCode == 0,
-            ["output"] = string.IsNullOrWhiteSpace(stdout) ? stderr : stdout,
-            ["journalId"] = jid
-        };
-    }
-
-    private static Dictionary<string, object?> Recycle(JsonElement paramsEl)
-    {
-        var paths = new List<string>();
-        if (paramsEl.TryGetProperty("paths", out var arr) && arr.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var x in arr.EnumerateArray())
-            {
-                if (x.ValueKind == JsonValueKind.String) paths.Add(x.GetString()!);
-            }
-        }
-        var shell = new RecycleBin();
-        foreach (var path in paths) shell.Send(path);
-        var jid = "j_" + Guid.NewGuid().ToString("N")[..8];
-        Journal[jid] = () => { };
-        return new Dictionary<string, object?>
-        {
-            ["ok"] = true,
-            ["output"] = $"Moved {paths.Count} item(s) to Recycle Bin",
-            ["journalId"] = jid
+            ["output"] = string.IsNullOrWhiteSpace(stdout) ? stderr : stdout
         };
     }
 
     private static Dictionary<string, object?> OpenSettings(string uri)
     {
+        if (!Regex.IsMatch(uri, @"\Ams-settings:[a-z0-9-]*\z", RegexOptions.IgnoreCase))
+            return Fail("Invalid Windows Settings URI.");
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
         {
             FileName = uri,
@@ -196,32 +248,49 @@ internal static class Program
 
     private static Dictionary<string, object?> Click(string name, string windowTitle)
     {
+        if (string.IsNullOrWhiteSpace(windowTitle) || string.IsNullOrWhiteSpace(name))
+            return Fail("A window title and element name are required.");
         using var automation = new UIA3Automation();
-        var root = FindWindow(automation, windowTitle) ?? automation.GetDesktop();
-        var el = root.FindFirstDescendant(cf => cf.ByName(name));
-        if (el is null) return Fail($"Element not found: {name}");
-        el.Click();
+        var root = FindWindow(automation, windowTitle);
+        if (root is null) return Fail($"Window not found or ambiguous: {windowTitle}");
+        var elements = root.FindAllDescendants(cf => cf.ByName(name));
+        if (elements.Length != 1) return Fail($"Element not found or ambiguous: {name}");
+        elements[0].Click();
         return Ok($"Clicked {name}");
     }
 
-    private static Dictionary<string, object?> TypeText(string text)
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    private static Dictionary<string, object?> TypeText(string text, string windowTitle)
     {
-        SendKeys.SendWait(text);
-        return Ok("Typed text");
+        if (string.IsNullOrWhiteSpace(windowTitle)) return Fail("A window title is required.");
+        using var automation = new UIA3Automation();
+        var window = FindWindow(automation, windowTitle);
+        if (window is null) return Fail($"Window not found or ambiguous: {windowTitle}");
+        if (window.Properties.NativeWindowHandle.ValueOrDefault != GetForegroundWindow())
+            return Fail("The requested window must be in the foreground.");
+        var focused = automation.FocusedElement();
+        if (focused is null || focused.Properties.ProcessId.ValueOrDefault != window.Properties.ProcessId.ValueOrDefault)
+            return Fail("The focused field is not in the requested window.");
+        if (focused.Properties.IsPassword.ValueOrDefault) return Fail("Password fields are not supported.");
+        var value = focused.Patterns.Value.PatternOrDefault;
+        if (value is null || value.IsReadOnly.Value) return Fail("The focused field does not support text entry.");
+        // ValuePattern treats braces, modifiers, and newlines as text, not shortcuts.
+        value.SetValue(text);
+        return Ok("Set the focused field text");
     }
 
     private static Dictionary<string, object?> Undo(string journalId)
     {
-        if (!Journal.TryGetValue(journalId, out var action)) return Fail("Nothing to undo.");
-        action();
-        Journal.Remove(journalId);
-        return Ok("Undone");
+        return Fail("Automatic undo is not available. Restore recycled items manually from the Windows Recycle Bin.");
     }
 
     private static AutomationElement? FindWindow(UIA3Automation automation, string title)
     {
         if (string.IsNullOrWhiteSpace(title)) return null;
-        return automation.GetDesktop().FindFirstChild(cf => cf.ByName(title));
+        var matches = automation.GetDesktop().FindAllChildren(cf => cf.ByName(title));
+        return matches.Length == 1 ? matches[0] : null;
     }
 
     private static string Str(JsonElement el, string name)
@@ -238,35 +307,4 @@ internal static class Program
     private static Dictionary<string, object?> Fail(string output) =>
         new() { ["ok"] = false, ["output"] = output };
 
-    private static string Quote(string s) => "\"" + s.Replace("\"", "\\\"") + "\"";
-}
-
-internal sealed class RecycleBin
-{
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    private struct SHFILEOPSTRUCT
-    {
-        public IntPtr hwnd;
-        public uint wFunc;
-        public string pFrom;
-        public string pTo;
-        public ushort fFlags;
-        public bool fAnyOperationsAborted;
-        public IntPtr hNameMappings;
-        public string lpszProgressTitle;
-    }
-
-    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
-    private static extern int SHFileOperation(ref SHFILEOPSTRUCT fileOp);
-
-    public void Send(string path)
-    {
-        var op = new SHFILEOPSTRUCT
-        {
-            wFunc = 3,
-            pFrom = path + "\0\0",
-            fFlags = 0x0040 | 0x0010 | 0x0200
-        };
-        SHFileOperation(ref op);
-    }
 }

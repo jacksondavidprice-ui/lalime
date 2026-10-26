@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   AnthropicClient,
   friendlyAnthropicError,
@@ -30,6 +30,15 @@ describe("anthropic client helpers", () => {
 });
 
 describe("AnthropicClient with mocked transport", () => {
+  it("does not start a request when its caller already stopped", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ content: [{ type: "text", text: "Must not run" }] })));
+    const client = new AnthropicClient({ apiKey: FAKE_KEY, fetchImpl });
+    await expect(client.createMessage({ system: "s", user: "u", signal: controller.signal })).rejects.toThrow();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("streams text deltas and omits temperature/prefill", async () => {
     const chunks = [
       'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Done. "}}\n\n',

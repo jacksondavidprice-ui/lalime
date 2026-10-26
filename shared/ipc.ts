@@ -22,6 +22,9 @@ export const IPC = {
   signInApiKey: "lalime:signInApiKey",
   sendMessage: "lalime:sendMessage",
   respondApproval: "lalime:respondApproval",
+  beginApprovalHold: "lalime:beginApprovalHold",
+  cancelApprovalHold: "lalime:cancelApprovalHold",
+  revokeTaskGrant: "lalime:revokeTaskGrant",
   undo: "lalime:undo",
   stop: "lalime:stop",
   dismissBlocked: "lalime:dismissBlocked",
@@ -30,6 +33,10 @@ export const IPC = {
   writerClearKey: "lalime:writerClearKey",
   writerStatus: "lalime:writerStatus",
   writerCheckKey: "lalime:writerCheckKey",
+  updateSettings: "lalime:updateSettings",
+  connectProvider: "lalime:connectProvider",
+  disconnect: "lalime:disconnect",
+  copyText: "lalime:copyText",
 } as const;
 
 export type IpcChannel = (typeof IPC)[keyof typeof IPC];
@@ -49,7 +56,14 @@ export interface LalimeApi {
   signInChatgpt: () => Promise<{ ok: boolean; message?: string }>;
   signInApiKey: (apiKey: string) => Promise<{ ok: boolean; message?: string }>;
   sendMessage: (text: string) => Promise<void>;
-  respondApproval: (choice: ApprovalChoice) => Promise<void>;
+  respondApproval: (choice: ApprovalChoice, actionId?: string) => Promise<boolean | void>;
+  beginApprovalHold?: (actionId: string) => Promise<boolean>;
+  cancelApprovalHold?: (actionId: string) => Promise<void>;
+  revokeTaskGrant?: (grantId: string) => Promise<boolean>;
+  updateSettings: (settings: Partial<import("./settings.js").AppSettings>) => Promise<{ ok: boolean; message?: string }>;
+  connectProvider: (apiKey?: string) => Promise<{ ok: boolean; message?: string }>;
+  disconnect: () => Promise<void>;
+  copyText: (text: string) => Promise<void>;
   undo: (activityId: string) => Promise<void>;
   stop: () => Promise<void>;
   dismissBlocked: () => Promise<void>;

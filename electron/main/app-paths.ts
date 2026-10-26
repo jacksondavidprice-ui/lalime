@@ -78,7 +78,7 @@ export function resolveWindowIcon(ctx: AppPathContext): string {
 
 /** Preload is always a sibling of main under electron/. */
 export function resolvePreloadScript(ctx: AppPathContext): string {
-  return path.join(ctx.mainModuleDir, "../preload", "index.js");
+  return path.join(ctx.mainModuleDir, "../preload", "index.cjs");
 }
 
 /**

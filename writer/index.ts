@@ -72,6 +72,7 @@ export class WriterService {
   ): Promise<ComposeReplyResult> {
     const fallback = applySafeLocalFixes(opts.fallbackText);
     try {
+      if (opts.signal?.aborted) throw new Error("Writing was stopped.");
       const user = [
         stageInstructions.reply,
         "",
@@ -87,6 +88,7 @@ export class WriterService {
         onDelta: opts.onDelta,
         signal: opts.signal,
       });
+      if (opts.signal?.aborted) throw new Error("Writing was stopped.");
 
       let text = applySafeLocalFixes(first.text.trim());
       const findings = lintReply(text);
@@ -116,10 +118,13 @@ export class WriterService {
     details: string;
     undoable: boolean;
     targetHint?: string;
-  }): Promise<ApprovalGlossResult> {
+  }, signal?: AbortSignal): Promise<ApprovalGlossResult> {
     try {
+      if (signal?.aborted) return { used: false };
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), this.approvalTimeoutMs);
+      const onAbort = () => controller.abort();
+      signal?.addEventListener("abort", onAbort, { once: true });
       try {
         const user = [
           stageInstructions.approvalLine,
@@ -154,6 +159,7 @@ export class WriterService {
         return { used: true, whatHappens: what, undo: undo || undefined };
       } finally {
         clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
       }
     } catch {
       return { used: false };

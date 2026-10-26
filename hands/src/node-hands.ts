@@ -5,7 +5,8 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdir, rename, writeFile, readFile, copyFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rename, writeFile, readFile, lstat, link, unlink, readdir, rmdir, readlink, symlink, realpath, access } from "node:fs/promises";
+import { constants } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import type { HandsClient, HandsResult, WindowElement } from "./types.js";
@@ -17,10 +18,118 @@ interface JournalEntry {
   summary: string;
   undone: boolean;
   restore?: () => Promise<void>;
+  restoreProgress?: () => { restored: number; total: number };
+}
+
+function restoreErrorMessage(error: unknown): string {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  switch (code) {
+    case "EEXIST": return "A file or folder already exists at the restore destination. It was left untouched.";
+    case "EACCES":
+    case "EPERM": return "Permission was denied. Check access to the original folder and recovery location before retrying.";
+    case "ENOENT": return "A file or folder needed for restore no longer exists. Check the recovery location before retrying.";
+    case "ENOTDIR": return "A required folder has been replaced by a file. Check the original restore location before retrying.";
+    case "ENOTEMPTY": return "The folder still contains files, so the restore could not finish.";
+    case "ENOSPC": return "There is not enough free storage to finish the restore.";
+    case "EBUSY": return "A file or folder is in use. Close the app using it before retrying.";
+    case "EXDEV": return "The restore location is on a different drive. Automatic restore cannot finish there.";
+    case "EIO": return "The storage device could not read or write the data. Check the device before retrying.";
+    default: return code ? "The operating system could not finish the restore. Check the recovery location before retrying."
+      : error instanceof Error ? error.message : "The restore could not finish.";
+  }
 }
 
 function id(): string {
   return `j_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+const KNOWN_FOLDERS = ["Documents", "Downloads", "Desktop", "Pictures", "Videos", "Music"];
+type RecycleRoot = { lexical: string; canonical: string };
+
+function strictChild(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return relative !== "" && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+}
+
+/** Resolve missing children from their nearest existing parent. Do not follow a broken link. */
+async function canonicalLocation(candidate: string): Promise<string> {
+  let ancestor = candidate;
+  while (true) {
+    try {
+      await lstat(ancestor);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT" || path.dirname(ancestor) === ancestor) throw error;
+      ancestor = path.dirname(ancestor);
+      continue;
+    }
+    return path.resolve(await realpath(ancestor), path.relative(ancestor, candidate));
+  }
+}
+
+async function validateRecyclePath(candidate: string, roots: RecycleRoot[]): Promise<string> {
+  if (!path.isAbsolute(candidate) || candidate.split(/[\\/]/).includes("..")) {
+    throw new Error("Recycle paths must be absolute and must not contain parent traversal.");
+  }
+  const lexical = path.resolve(candidate);
+  const canonical = await canonicalLocation(lexical);
+  if (!roots.some((root) => strictChild(root.lexical, lexical) && strictChild(root.canonical, canonical))) {
+    throw new Error("Recycle only items inside the approved personal folders. Folder roots and outside paths are not allowed.");
+  }
+  return canonical;
+}
+
+async function checkRecycleAccess(candidate: string, canonical: string): Promise<void> {
+  const source = await lstat(canonical);
+  const parent = await realpath(path.dirname(candidate));
+  const parentStat = await lstat(parent);
+  if ((source.mode & 0o444) === 0 || (process.platform !== "win32" && source.isDirectory() && (source.mode & 0o111) === 0)) {
+    throw new Error("The selected item is not readable. Nothing was moved for this item.");
+  }
+  if ((parentStat.mode & 0o222) === 0 || (process.platform !== "win32" && (parentStat.mode & 0o111) === 0)) {
+    throw new Error("The selected item's parent folder is not writable. Nothing was moved for this item.");
+  }
+  // Windows mode bits do not represent every ACL. Check access as well and preserve rename errors.
+  await access(candidate, constants.R_OK | (source.isDirectory() ? constants.X_OK : 0));
+  await access(parent, constants.W_OK | constants.X_OK);
+}
+
+/** Restore without replacing an existing file or directory. Keep failed items in quarantine. */
+async function restoreExclusive(
+  source: string,
+  destination: string,
+  created: Map<string, { dev: number; ino: number }>,
+  validateDestination: (destination: string) => Promise<void>,
+): Promise<void> {
+  const sourceStat = await lstat(source);
+  await validateDestination(destination);
+  const previous = created.get(destination);
+  if (previous) {
+    const current = await lstat(destination);
+    if (current.dev !== previous.dev || current.ino !== previous.ino) {
+      throw new Error("The restore destination changed. Recovery remains in quarantine.");
+    }
+  } else {
+    if (sourceStat.isDirectory()) {
+      await mkdir(destination, { mode: sourceStat.mode & 0o7777 });
+    } else if (sourceStat.isSymbolicLink()) {
+      await symlink(await readlink(source), destination);
+    } else if (sourceStat.isFile()) {
+      // link fails if the destination exists. rename can replace it on Unix.
+      await link(source, destination);
+    } else {
+      throw new Error("This file type cannot be restored automatically.");
+    }
+    const current = await lstat(destination);
+    created.set(destination, { dev: current.dev, ino: current.ino });
+  }
+  if (sourceStat.isDirectory()) {
+    for (const name of await readdir(source)) {
+      await restoreExclusive(path.join(source, name), path.join(destination, name), created, validateDestination);
+    }
+    await rmdir(source);
+  } else {
+    await unlink(source);
+  }
 }
 
 /** 1x1 lime PNG as data URL — placeholder when no display capture exists. */
@@ -30,10 +139,12 @@ const PLACEHOLDER_PNG =
 export class NodeHands implements HandsClient {
   readonly backend = "node" as const;
   private journal: JournalEntry[] = [];
+  private pendingUndos = new Set<string>();
   private stopped = false;
+  private generation = 0;
   private scratch: string;
 
-  constructor(scratchRoot?: string) {
+  constructor(scratchRoot?: string, private readonly allowedRoots = KNOWN_FOLDERS.map((name) => path.join(os.homedir(), name))) {
     this.scratch = scratchRoot ?? path.join(os.tmpdir(), "lalime-hands");
   }
 
@@ -43,6 +154,7 @@ export class NodeHands implements HandsClient {
 
   stop(): void {
     this.stopped = true;
+    this.generation++;
   }
 
   resume(): void {
@@ -81,7 +193,6 @@ export class NodeHands implements HandsClient {
         ok: true,
         output: `[node-hands] Recorded PowerShell (not executed on ${process.platform}): ${command.slice(0, 200)}`,
         journalId: jid,
-        undoToken: jid,
       };
     }
 
@@ -97,7 +208,6 @@ export class NodeHands implements HandsClient {
         ok: true,
         output: (stdout || stderr || "OK").toString().slice(0, 8000),
         journalId: jid,
-        undoToken: jid,
       };
     } catch (err) {
       return {
@@ -109,44 +219,138 @@ export class NodeHands implements HandsClient {
 
   async moveToRecycleBin(paths: string[], summary: string): Promise<HandsResult> {
     if (this.stopped) return { ok: false, output: "Stopped by user." };
-    await mkdir(this.scratch, { recursive: true });
-    const quarantine = path.join(this.scratch, "quarantine", id());
-    await mkdir(quarantine, { recursive: true });
-    const moved: Array<{ from: string; to: string }> = [];
+    const generation = this.generation;
+    if (paths.length === 0) return { ok: false, output: "No files were selected. Nothing moved." };
+    const roots: RecycleRoot[] = [];
+    for (const root of this.allowedRoots) {
+      try { roots.push({ lexical: path.resolve(root), canonical: await realpath(root) }); }
+      catch { /* An unavailable root does not grant access. */ }
+    }
+    const selected: Array<{ path: string; canonical: string; entry: string }> = [];
+    const seen = new Set<string>();
+    let validatingPath = "";
+    try {
+      for (const candidate of paths) {
+        validatingPath = candidate;
+        const canonical = await validateRecyclePath(candidate, roots);
+        const entry = path.join(await canonicalLocation(path.dirname(candidate)), path.basename(candidate));
+        const identity = process.platform === "win32" ? entry.toLowerCase() : entry;
+        // Validate every input before deduplication. A final link is its own directory entry.
+        if (!seen.has(identity)) {
+          seen.add(identity);
+          selected.push({ path: candidate, canonical, entry });
+        }
+      }
+    } catch (error) {
+      return { ok: false, output: `No items were moved. Refused path: ${validatingPath}. ${error instanceof Error ? error.message : "The recycle scope could not be verified."}` };
+    }
+    let quarantine: string;
+    try {
+      const root = path.join(this.scratch, "quarantine");
+      await mkdir(root, { recursive: true });
+      quarantine = await mkdtemp(path.join(root, "move-"));
+    } catch (err) {
+      return { ok: false, output: `Nothing moved: ${err instanceof Error ? err.message : "Cannot create quarantine."}` };
+    }
+    // Keep original names available for manual recovery after this process exits.
+    const recoveryManifest = JSON.stringify({
+      version: 1,
+      entries: selected.map((item, index) => ({ quarantineName: String(index), originalPath: path.resolve(item.path) })),
+    });
+    const manifestPath = path.join(quarantine, "recovery.json");
+    try {
+      await writeFile(manifestPath, recoveryManifest, { flag: "wx", mode: 0o600, flush: true });
+    } catch (err) {
+      return { ok: false, output: `No items were moved. Cannot save recovery manifest: ${err instanceof Error ? err.message : "Write failed."}` };
+    }
+    const moved: Array<{ from: string; to: string; expectedDestination: string; restored: boolean }> = [];
+    const failures: string[] = [];
 
-    for (const p of paths) {
+    for (const [index, item] of selected.entries()) {
+      const p = item.path;
+      if (this.stopped || generation !== this.generation) {
+        failures.push(`Stopped by user. ${selected.length - index} remaining item(s) were not moved.`);
+        break;
+      }
       try {
-        const base = path.basename(p);
-        const dest = path.join(quarantine, base);
-        await rename(p, dest).catch(async () => {
-          await copyFile(p, dest);
-        });
-        moved.push({ from: p, to: dest });
-      } catch {
-        // Skip missing paths in demo/sandbox.
+        const canonical = await validateRecyclePath(p, roots);
+        if (path.relative(item.canonical, canonical) !== "") throw new Error("The selected target changed after validation. This item was not moved.");
+        await checkRecycleAccess(p, canonical);
+        const expectedDestination = path.join(await realpath(path.dirname(p)), path.basename(p));
+        // Access checks await filesystem work. Recheck scope before starting the move.
+        const current = await validateRecyclePath(p, roots);
+        if (path.relative(item.canonical, current) !== "" || path.relative(item.entry, expectedDestination) !== "") {
+          throw new Error("The selected target changed after validation. This item was not moved.");
+        }
+        if (this.stopped || generation !== this.generation) {
+          failures.push(`Stopped by user. ${selected.length - index} remaining item(s) were not moved.`);
+          break;
+        }
+        const dest = path.join(quarantine, String(index));
+        // Cross-device moves fail safely. A copy alone is not a recycle operation.
+        await rename(p, dest);
+        moved.push({ from: p, to: dest, expectedDestination, restored: false });
+      } catch (err) {
+        const reason = (err as NodeJS.ErrnoException | null)?.code === "ENOENT"
+          ? "This file or folder no longer exists. Nothing was moved for this item."
+          : err instanceof Error ? err.message : "Move failed.";
+        failures.push(`${p}: ${reason}`);
       }
     }
 
+    const output = `Moved ${moved.length} item(s) to quarantine (Recycle-Bin style).` +
+      (failures.length ? ` Failed ${failures.length}: ${failures.slice(0, 5).join("; ")}${failures.length > 5 ? `; and ${failures.length - 5} more failure(s).` : ""}` : "");
+    if (moved.length === 0) return { ok: false, output };
     const jid = id();
+    const created = new Map<string, { dev: number; ino: number }>();
     this.journal.push({
       id: jid,
       summary,
       undone: false,
+      restoreProgress: () => ({ restored: moved.filter((m) => m.restored).length, total: moved.length }),
       restore: async () => {
+        const errors: string[] = [];
         for (const m of moved) {
-          await rename(m.to, m.from).catch(() => undefined);
+          if (m.restored) continue;
+          try {
+            await restoreExclusive(m.to, m.from, created, async (destination) => {
+              await validateRecyclePath(destination, roots);
+              const actual = path.join(await canonicalLocation(path.dirname(destination)), path.basename(destination));
+              const expected = path.resolve(m.expectedDestination, path.relative(m.from, destination));
+              if (path.relative(expected, actual) !== "") {
+                throw new Error("The original restore location changed. Recovery remains in quarantine.");
+              }
+            });
+            m.restored = true;
+          } catch (err) {
+            const recoveryLabel = (err as NodeJS.ErrnoException | null)?.code === "EEXIST" ? "Original copy kept at" : "Recovery location";
+            errors.push(`${m.from}: ${restoreErrorMessage(err)} ${recoveryLabel}: ${m.to}`);
+          }
         }
+        try {
+          const remaining = moved.filter((m) => !m.restored).map((m) => ({
+            quarantineName: path.basename(m.to), originalPath: path.resolve(m.from),
+          }));
+          // Replace only after a complete write, so a failed update keeps the previous mapping.
+          const updatePath = path.join(quarantine, `recovery-update-${id()}.json`);
+          await writeFile(updatePath, JSON.stringify({ version: 1, entries: remaining }), { flag: "wx", mode: 0o600, flush: true });
+          await rename(updatePath, manifestPath);
+        } catch (err) {
+          errors.push(`Recovery list update failed: ${restoreErrorMessage(err)}`);
+        }
+        if (errors.length) throw new Error(`Restored ${moved.filter((m) => m.restored).length} of ${moved.length} item(s). ${errors.join("; ")} Recovery list: ${manifestPath}`);
       },
     });
     return {
-      ok: true,
-      output: `Moved ${moved.length} item(s) to quarantine (Recycle-Bin style).`,
+      ok: failures.length === 0,
+      output,
       journalId: jid,
       undoToken: jid,
     };
   }
 
   async openSettings(uri: string): Promise<HandsResult> {
+    if (!/^ms-settings:[a-z0-9-]*$/i.test(uri) || /[\r\n]/.test(uri)) return { ok: false, output: "Invalid Windows Settings URI." };
     if (this.stopped) return { ok: false, output: "Stopped by user." };
     if (process.platform === "win32") {
       try {
@@ -207,10 +411,19 @@ export class NodeHands implements HandsClient {
   async undo(journalId: string): Promise<HandsResult> {
     const entry = this.journal.find((j) => j.id === journalId);
     if (!entry) return { ok: false, output: "Nothing to undo." };
-    if (entry.undone) return { ok: false, output: "Already undone." };
-    await entry.restore?.();
-    entry.undone = true;
-    return { ok: true, output: `Undid: ${entry.summary}` };
+    if (entry.undone) return { ok: false, output: "Already undone.", restoreProgress: entry.restoreProgress?.() };
+    if (!entry.restore) return { ok: false, output: "This change has no automatic restore operation." };
+    if (this.pendingUndos.has(journalId)) return { ok: false, output: "Undo is already in progress.", restoreProgress: entry.restoreProgress?.() };
+    this.pendingUndos.add(journalId);
+    try {
+      await entry.restore();
+      entry.undone = true;
+      return { ok: true, output: `Undid: ${entry.summary}`, restoreProgress: entry.restoreProgress?.() };
+    } catch (err) {
+      return { ok: false, output: err instanceof Error ? err.message : "Restore failed. Recovery remains in quarantine.", journalId, restoreProgress: entry.restoreProgress?.() };
+    } finally {
+      this.pendingUndos.delete(journalId);
+    }
   }
 }
 

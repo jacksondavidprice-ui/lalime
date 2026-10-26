@@ -18,6 +18,10 @@ import { isCodexAvailable, resolveCodexCommand } from "./codex-resolve.js";
 export interface CodexClientOptions {
   command?: string;
   args?: string[];
+  /** App-owned configuration and account directory. No user config is copied. */
+  codexHome?: string;
+  /** Maximum time to wait for a JSON-RPC response. */
+  requestTimeoutMs?: number;
   /** Injected stdio for tests (fake server). */
   transport?: {
     stdin: NodeJS.WritableStream;
@@ -47,6 +51,11 @@ export interface DynamicToolCallResponse {
   success: boolean;
 }
 
+export interface CodexAccountState {
+  account: { type: string; email?: string | null; planType?: string | null } | null;
+  requiresOpenaiAuth?: boolean;
+}
+
 type JsonRpc =
   | { jsonrpc?: string; id: number | string; method: string; params?: unknown }
   | { jsonrpc?: string; id: number | string; result?: unknown; error?: { code: number; message: string } }
@@ -58,13 +67,19 @@ export class CodexAppServerClient extends EventEmitter {
   private nextId = 1;
   private pending = new Map<
     number | string,
-    { resolve: (v: unknown) => void; reject: (e: Error) => void }
+    { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }
   >();
   private stdin: NodeJS.WritableStream | null = null;
   private started = false;
+  private starting: Promise<void> | null = null;
+  private reader: readline.Interface | null = null;
 
   constructor(private readonly options: CodexClientOptions = {}) {
     super();
+    if (options.requestTimeoutMs !== undefined &&
+        (!Number.isFinite(options.requestTimeoutMs) || options.requestTimeoutMs <= 0 || options.requestTimeoutMs > 2_147_483_647)) {
+      throw new Error("requestTimeoutMs must be a positive finite timer interval");
+    }
   }
 
   get isRunning(): boolean {
@@ -72,44 +87,78 @@ export class CodexAppServerClient extends EventEmitter {
   }
 
   async start(): Promise<void> {
+    if (this.starting) return this.starting;
     if (this.started) return;
+    this.starting = this.startTransport();
+    try {
+      await this.starting;
+    } catch (error) {
+      this.stop();
+      throw error;
+    } finally {
+      this.starting = null;
+    }
+  }
+
+  private async startTransport(): Promise<void> {
+    let stdout: NodeJS.ReadableStream;
 
     if (this.options.transport) {
       this.stdin = this.options.transport.stdin;
       this.transportKill = this.options.transport.kill ?? null;
-      const rl = readline.createInterface({ input: this.options.transport.stdout });
-      rl.on("line", (line) => this.onLine(line));
+      stdout = this.options.transport.stdout;
     } else {
       const command = this.options.command ?? resolveCodexCommand();
       if (!isCodexAvailable() && !this.options.command) {
         throw new Error(
-          `Codex CLI not found. Install with "npm i -g @openai/codex", run "codex login", or set LALIME_CODEX_BIN.`,
+          `Codex CLI not found. Install with "npm i -g @openai/codex" or set LALIME_CODEX_BIN to your installed Codex CLI. Then return to Lalime and select "Sign in with ChatGPT".`,
         );
       }
       const args = this.options.args ?? ["app-server", "--listen", "stdio://"];
+      const env = { ...process.env };
+      if (this.options.codexHome !== undefined) {
+        env.CODEX_HOME = this.options.codexHome;
+        delete env.OPENAI_API_KEY;
+        delete env.CODEX_API_KEY;
+      }
       this.proc = spawn(command, args, {
         stdio: ["pipe", "pipe", "pipe"],
-        env: process.env,
+        env,
         // Windows npm shims are often .cmd — shell helps spawn them reliably.
         shell: process.platform === "win32",
       });
       this.stdin = this.proc.stdin;
-      const rl = readline.createInterface({ input: this.proc.stdout });
-      rl.on("line", (line) => this.onLine(line));
+      stdout = this.proc.stdout;
+      const proc = this.proc;
       this.proc.stderr.on("data", (buf: Buffer) => {
         this.emit("stderr", buf.toString("utf8"));
       });
       this.proc.on("exit", (code) => {
+        if (this.proc !== proc) return;
+        this.closeTransport(new Error(`Codex app-server exited (${code ?? "signal"})`));
         this.emit("exit", code);
-        this.started = false;
-        this.proc = null;
       });
       this.proc.on("error", (err) => {
-        this.emit("error", err);
+        if (this.proc === proc) this.failTransport(err);
       });
     }
 
     this.started = true;
+    const input = this.stdin;
+    const onError = (error: Error) => {
+      if (this.stdin === input) this.failTransport(error);
+    };
+    input.on("error", onError);
+    stdout.on("error", onError);
+    const reader = readline.createInterface({ input: stdout });
+    this.reader = reader;
+    reader.on("line", (line) => this.onLine(line));
+    const onClose = () => {
+      if (this.reader === reader) this.failTransport(new Error("Codex transport closed"));
+    };
+    reader.on("close", onClose);
+    stdout.once("close", onClose);
+    input.once("close", onClose);
 
     await this.request("initialize", {
       clientInfo: {
@@ -125,15 +174,33 @@ export class CodexAppServerClient extends EventEmitter {
   }
 
   stop(): void {
-    this.transportKill?.();
-    this.proc?.kill();
+    this.closeTransport(new Error("Codex client stopped"));
+  }
+
+  private failTransport(error: Error): void {
+    this.closeTransport(error);
+    this.emit("transportError", error);
+    // EventEmitter throws when an error event has no listener.
+    if (this.listenerCount("error") > 0) this.emit("error", error);
+  }
+
+  private closeTransport(error: Error): void {
+    const proc = this.proc;
+    const kill = this.transportKill;
+    const reader = this.reader;
+    this.reader = null;
+    this.transportKill = null;
     this.proc = null;
     this.stdin = null;
     this.started = false;
+    reader?.close();
     for (const [, p] of this.pending) {
-      p.reject(new Error("Codex client stopped"));
+      clearTimeout(p.timer);
+      p.reject(error);
     }
     this.pending.clear();
+    kill?.();
+    proc?.kill();
   }
 
   async loginWithChatgpt(): Promise<{ authUrl?: string; loginId?: string }> {
@@ -152,6 +219,14 @@ export class CodexAppServerClient extends EventEmitter {
     await this.request("account/login/start", { type: "apiKey", apiKey });
   }
 
+  async readAccount(): Promise<CodexAccountState> {
+    return await this.request("account/read", { refreshToken: false }) as CodexAccountState;
+  }
+
+  async logout(): Promise<void> {
+    await this.request("account/logout", {});
+  }
+
   async startThread(options: {
     model?: string;
     cwd?: string;
@@ -159,13 +234,19 @@ export class CodexAppServerClient extends EventEmitter {
     developerInstructions?: string;
   } = {}): Promise<string> {
     const params: Record<string, unknown> = {
-      model: options.model ?? process.env.LALIME_MODEL ?? "gpt-5.4",
-      sandboxPolicy: {
-        type: "workspaceWrite",
-        networkAccess: false,
+      sandbox: "read-only",
+      approvalPolicy: "untrusted",
+      // Computer actions must use the tools checked by Lalime's Guardian.
+      config: {
+        "features.shell_tool": false,
+        "features.apps": false,
+        "features.browser_use": false,
+        "features.browser_use_external": false,
+        "web_search": "disabled",
       },
-      approvalPolicy: "on-request",
     };
+    const model = options.model?.trim() || process.env.LALIME_MODEL?.trim();
+    if (model) params.model = model;
     if (options.cwd) params.cwd = options.cwd;
     if (options.dynamicTools?.length) params.dynamicTools = options.dynamicTools;
     if (options.developerInstructions) {
@@ -182,10 +263,9 @@ export class CodexAppServerClient extends EventEmitter {
       threadId,
       input: [{ type: "text", text }],
       sandboxPolicy: {
-        type: "workspaceWrite",
-        networkAccess: false,
+        type: "readOnly",
       },
-      approvalPolicy: "on-request",
+      approvalPolicy: "untrusted",
     })) as { turn?: { id: string } };
     return { turnId: result.turn?.id };
   }
@@ -222,9 +302,19 @@ export class CodexAppServerClient extends EventEmitter {
 
   request(method: string, params?: unknown): Promise<unknown> {
     const id = this.nextId++;
-    this.send({ id, method, params });
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`Codex request timed out: ${method}`));
+      }, this.options.requestTimeoutMs ?? 30_000);
+      this.pending.set(id, { resolve, reject, timer });
+      try {
+        this.send({ id, method, params });
+      } catch (error) {
+        clearTimeout(timer);
+        this.pending.delete(id);
+        reject(error instanceof Error ? error : new Error("Codex transport write failed"));
+      }
     });
   }
 
@@ -240,6 +330,9 @@ export class CodexAppServerClient extends EventEmitter {
     let msg: JsonRpc;
     try {
       msg = JSON.parse(line) as JsonRpc;
+      if (msg === null || typeof msg !== "object" || Array.isArray(msg)) {
+        throw new Error("Invalid JSON-RPC message");
+      }
     } catch {
       this.emit("parse_error", line);
       return;
@@ -267,6 +360,7 @@ export class CodexAppServerClient extends EventEmitter {
       const pending = this.pending.get(resp.id);
       if (pending) {
         this.pending.delete(resp.id);
+        clearTimeout(pending.timer);
         if (resp.error) {
           pending.reject(new Error(resp.error.message));
         } else {

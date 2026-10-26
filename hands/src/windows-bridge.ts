@@ -6,9 +6,10 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import readline from "node:readline";
 import path from "node:path";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { HandsClient, HandsResult, WindowElement } from "./types.js";
+import { ALLOWED_MUTATION_ROOTS } from "../../guardian/src/never-list.js";
 import {
   handsMissingMessage,
   packagedHandsExe,
@@ -17,7 +18,38 @@ import {
 } from "./hands-exe.js";
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
+// Use OS known folders so redirected user folders retain their actual scope.
+const RECYCLE_ROOTS = ["documents", "downloads", "desktop", "pictures", "videos", "music"] as const;
 
+type RecycleRoot = { lexical: string; canonical: string };
+
+function isStrictChild(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return relative !== "" && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+}
+
+function isAllowedRecyclePath(file: string, roots: RecycleRoot[]): boolean {
+  if (file.split(/[\\/]/).includes("..")) return false;
+  try {
+    const lexical = path.resolve(file);
+    const canonical = realpathSync.native(file);
+    return roots.some((root) => isStrictChild(root.lexical, lexical) && isStrictChild(root.canonical, canonical));
+  } catch {
+    return false;
+  }
+}
+
+function recyclePathIdentity(file: string): { entry: string; target: string } {
+  const entry = path.join(realpathSync.native(path.dirname(file)), path.basename(file));
+  const target = realpathSync.native(file);
+  return process.platform === "win32"
+    ? { entry: entry.toLowerCase(), target: target.toLowerCase() }
+    : { entry, target };
+}
+
+function describePaths(paths: string[]): string {
+  return paths.slice(0, 5).join("; ") + (paths.length > 5 ? `; and ${paths.length - 5} more item(s)` : "");
+}
 interface BridgeResponse extends HandsResult {
   windows?: Array<{ title: string; pid?: number }>;
   elements?: WindowElement[];
@@ -75,6 +107,7 @@ export class WindowsHandsBridge implements HandsClient {
   private nextId = 1;
   private pending = new Map<string, { resolve: (v: BridgeResponse) => void }>();
   private stopped = false;
+  private recycleGeneration = 0;
   private journal: Array<{ id: string; summary: string; undone: boolean }> = [];
 
   isAvailable(): boolean {
@@ -139,6 +172,7 @@ export class WindowsHandsBridge implements HandsClient {
 
   stop(): void {
     this.stopped = true;
+    this.recycleGeneration++;
     this.proc?.kill();
     this.proc = null;
   }
@@ -164,13 +198,68 @@ export class WindowsHandsBridge implements HandsClient {
     return r;
   }
 
-  async moveToRecycleBin(paths: string[], summary: string) {
-    const r = await this.call("files.recycle", { paths, summary });
-    if (r.journalId) this.journal.push({ id: r.journalId, summary, undone: false });
-    return r;
+  async moveToRecycleBin(paths: string[], _summary: string): Promise<HandsResult> {
+    if (this.stopped) return { ok: false, output: "Stopped by user." };
+    if (!Array.isArray(paths) || paths.length === 0) {
+      return { ok: false, output: "Use existing absolute file or folder paths without wildcards. No items were moved." };
+    }
+    const invalidPaths = paths.filter((file) => typeof file !== "string" || !path.isAbsolute(file) || /[*?\0]/.test(file) || !existsSync(file));
+    if (invalidPaths.length) {
+      return { ok: false, output: `Use existing absolute file or folder paths without wildcards. Refused paths: ${describePaths(invalidPaths)}. No items were moved.` };
+    }
+    const generation = this.recycleGeneration;
+    let completed = 0;
+    let currentFile = paths[0];
+    try {
+      // Electron aborts on Windows if an item cannot be recycled. Do not fall back to deletion.
+      const { app, shell } = await import("electron");
+      const roots: RecycleRoot[] = [];
+      for (const name of RECYCLE_ROOTS) {
+        if (!ALLOWED_MUTATION_ROOTS.includes(name)) continue;
+        try {
+          const lexical = path.resolve(app.getPath(name));
+          roots.push({ lexical, canonical: realpathSync.native(lexical) });
+        } catch {
+          // Unavailable folders do not grant access.
+        }
+      }
+      const refusedPaths = paths.filter((file) => !isAllowedRecyclePath(file, roots));
+      if (refusedPaths.length) {
+        return { ok: false, output: `Recycle only items inside Documents, Downloads, Desktop, Pictures, Videos, or Music. Folder roots and paths outside these folders are not allowed. Refused paths: ${describePaths(refusedPaths)}. No items were moved.` };
+      }
+      const uniquePaths = new Map<string, { file: string; target: string }>();
+      for (const file of paths) {
+        currentFile = file;
+        // Trash the directory entry, not the target of a final symbolic link.
+        const identity = recyclePathIdentity(file);
+        if (!uniquePaths.has(identity.entry)) uniquePaths.set(identity.entry, { file, target: identity.target });
+      }
+      for (const [entry, selected] of uniquePaths) {
+        const file = selected.file;
+        currentFile = file;
+        if (this.stopped || generation !== this.recycleGeneration) {
+            const remaining = [...uniquePaths.values()].slice(completed).map((item) => item.file);
+            return { ok: false, completedItems: completed, output: `Stopped after ${completed} completed item(s). Not processed: ${describePaths(remaining)}. Restore completed items manually from the Recycle Bin.` };
+        }
+        // Recheck after each asynchronous operation. The shell API has no atomic path guard.
+        if (!isAllowedRecyclePath(file, roots)) {
+            return { ok: false, completedItems: completed, output: `Recycle stopped after ${completed} completed item(s). The next path is missing or outside the allowed folders: ${file}. Restore completed items manually from the Recycle Bin.` };
+        }
+        const current = recyclePathIdentity(file);
+        if (current.entry !== entry || current.target !== selected.target) {
+          return { ok: false, completedItems: completed, output: `Recycle stopped after ${completed} completed item(s). The next path changed since validation: ${file}. Restore completed items manually from the Recycle Bin.` };
+        }
+        await shell.trashItem(file);
+        completed++;
+      }
+        return { ok: true, completedItems: completed, output: `Moved ${completed} item(s) to the Recycle Bin. Restore them manually from the Recycle Bin. Automatic undo is not available.` };
+    } catch {
+        return { ok: false, completedItems: completed, output: `Recycle stopped after ${completed} completed item(s). Windows could not recycle the current item (${currentFile}); it may be partly moved. No permanent-deletion fallback was used. Check the Recycle Bin to restore items manually.` };
+    }
   }
 
   async openSettings(uri: string) {
+    if (!/^ms-settings:[a-z0-9-]*$/i.test(uri) || /[\r\n]/.test(uri)) return { ok: false, output: "Invalid Windows Settings URI." };
     return this.call("settings.open", { uri });
   }
 

@@ -8,12 +8,11 @@ describe("NodeHands", () => {
     expect(r.blocked).toBe(true);
   });
 
-  it("journals a recycle move", async () => {
+  it("does not journal a missing recycle target", async () => {
     const h = new NodeHands();
     const r = await h.moveToRecycleBin(["/tmp/does-not-exist-lalime"], "test");
-    expect(r.ok).toBe(true);
-    expect(r.journalId).toBeTruthy();
-    const undo = await h.undo(r.journalId!);
-    expect(undo.ok).toBe(true);
+    expect(r.ok).toBe(false);
+    expect(r.journalId).toBeUndefined();
+    expect(h.listJournal()).toEqual([]);
   });
 });

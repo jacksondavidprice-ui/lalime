@@ -100,6 +100,7 @@ export class AnthropicClient {
   }
 
   async createMessage(input: MessageCreateInput): Promise<MessageCreateResult> {
+    if (input.signal?.aborted) throw new Error("Writing was stopped.");
     const body: Record<string, unknown> = {
       model: this.model,
       max_tokens: 1200,
@@ -128,7 +129,7 @@ export class AnthropicClient {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     const onAbort = () => controller.abort();
-    input.signal?.addEventListener("abort", onAbort);
+    input.signal?.addEventListener("abort", onAbort, { once: true });
 
     try {
       const res = await this.fetchImpl("https://api.anthropic.com/v1/messages", {
@@ -142,13 +143,16 @@ export class AnthropicClient {
         redirect: "error",
         signal: controller.signal,
       });
+      if (input.signal?.aborted) throw new Error("Writing was stopped.");
 
       if (!res.ok) {
         throw new Error(friendlyAnthropicError(res.status));
       }
 
       if (input.stream && res.body) {
-        return await this.readStream(res, input.onDelta);
+        const result = await this.readStream(res, input.onDelta);
+        if (input.signal?.aborted) throw new Error("Writing was stopped.");
+        return result;
       }
 
       const payload = (await res.json()) as {
@@ -156,6 +160,7 @@ export class AnthropicClient {
         stop_reason?: string;
         usage?: { input_tokens?: number; output_tokens?: number };
       };
+      if (input.signal?.aborted) throw new Error("Writing was stopped.");
       if (payload.stop_reason === "refusal") {
         throw new Error("The writing model declined this reply. Lalime will use the regular text.");
       }
@@ -168,6 +173,7 @@ export class AnthropicClient {
       }
       return { text, stopReason: payload.stop_reason, usage: payload.usage };
     } catch (err) {
+      if (input.signal?.aborted) throw new Error("Writing was stopped.");
       if (err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError")) {
         throw new Error("The writing service took too long. Lalime will use the regular reply.");
       }

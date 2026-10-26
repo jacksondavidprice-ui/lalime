@@ -5,6 +5,10 @@ export interface HandsResult {
   output: string;
   journalId?: string;
   undoToken?: string;
+  /** Count of confirmed file moves, including moves from a partial batch. */
+  completedItems?: number;
+  /** Cumulative restored journal items; a directory counts as one complete item. */
+  restoreProgress?: { restored: number; total: number };
   /** Optional screenshot as data URL for dynamic tool image results. */
   imageDataUrl?: string;
 }
@@ -25,7 +29,7 @@ export interface HandsClient {
   resume(): void;
   listJournal(): Array<{ id: string; summary: string; undone: boolean }>;
   runPowerShell(command: string, summary: string): Promise<HandsResult>;
-  /** Static / AST-style pre-check before execution (Windows Hands.exe does real AST). */
+  /** Pattern-based command precheck. This is not a complete PowerShell AST sandbox. */
   precheckPowerShell(command: string): Promise<{ blocked: boolean; reason?: string }>;
   moveToRecycleBin(paths: string[], summary: string): Promise<HandsResult>;
   openSettings(uri: string): Promise<HandsResult>;

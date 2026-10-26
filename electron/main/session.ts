@@ -5,6 +5,8 @@
 
 import { EventEmitter } from "node:events";
 import { app, shell } from "electron";
+import { mkdirSync } from "node:fs";
+import path from "node:path";
 import {
   demoReviewer,
   evaluateAction,
@@ -12,13 +14,13 @@ import {
 } from "../../guardian/src/index.js";
 import { createHandsClient } from "../../hands/src/create-hands.js";
 import { handsMissingMessage } from "../../hands/src/hands-exe.js";
-import type { HandsClient } from "../../hands/src/types.js";
+import type { HandsClient, HandsResult } from "../../hands/src/types.js";
 import type { DemoScenarioId } from "../../shared/ipc.js";
 import type {
   ActivityEntry,
   AppSnapshot,
   ApprovalChoice,
-  AuthStatus,
+  ApprovalQueueEntry,
   ChatMessage,
   HandsStatus,
   PendingApproval,
@@ -32,9 +34,12 @@ import {
 import { WriterService, buildFactsPacket } from "../../writer/index.js";
 import type { FactsOutcome } from "../../writer/facts.js";
 import { CodexAppServerClient } from "./codex-client.js";
-import { codexMissingMessage, resolveCodexCommand } from "./codex-resolve.js";
 import { isScriptedMockAllowed } from "./dev-flags.js";
-import { LiveAgentHost } from "./live-agent.js";
+import { boundedDisplayText, LiveAgentHost } from "./live-agent.js";
+import { validateSettings } from "../../shared/settings.js";
+import { loadSettings, saveSettings } from "./settings-store.js";
+import { ApiAgentClient } from "./api-agent-client.js";
+import { getProvider, validateProviderBaseUrl } from "../../shared/providers.js";
 import {
   clearWriterKey,
   getWriterKeyStatus,
@@ -56,20 +61,30 @@ export class SessionController extends EventEmitter {
   private abort = false;
   private approvalWaiters: Array<(choice: ApprovalChoice) => void> = [];
   private codex: CodexAppServerClient | null = null;
+  private apiClient: ApiAgentClient | null = null;
+  private generation = 0;
+  private loginTimer: ReturnType<typeof setTimeout> | null = null;
+  private writerAbort: AbortController | null = null;
   private live: LiveAgentHost | null = null;
   private streamingMessageId: string | null = null;
   private agentConclusion = "";
   private turnUserRequest = "";
   private turnBlocked: Array<{ plainEnglish: string; tier: number }> = [];
+  private turnActivity: ActivityEntry[] = [];
   private writerFetch: typeof fetch | undefined;
+  private pendingUndos = new Set<string>();
 
   private state: AppSnapshot = {
+    settings: loadSettings(),
     mode: "live",
     auth: { state: "signed_out" },
     onboardingComplete: false,
     messages: [],
     plan: [],
     activity: [],
+    taskGrants: [],
+    pendingApprovalCount: 0,
+    approvalQueue: [],
     pendingApproval: null,
     blockedNotice: null,
     running: false,
@@ -170,6 +185,78 @@ export class SessionController extends EventEmitter {
     return structuredClone(this.state);
   }
 
+  updateSettings(input: unknown): { ok: boolean; message?: string } {
+    if (this.state.running) return { ok: false, message: "Stop the current task before changing settings." };
+    try {
+      const settings = validateSettings(input, this.state.settings);
+      if (settings.providerId !== "chatgpt") {
+        const provider = getProvider(settings.providerId);
+        if (settings.baseUrl) validateProviderBaseUrl(settings.baseUrl);
+        if (settings.providerId !== "custom" && settings.providerId !== "ollama" && settings.baseUrl && settings.baseUrl !== provider.baseUrl) throw new Error("Use Custom for a different provider endpoint.");
+      }
+      saveSettings(settings);
+      this.disposeClient();
+      this.patch({ settings, auth: { state: "signed_out" }, statusText: "Settings saved. Connect to start a new conversation.", messages: [], activity: [], plan: [], pendingApproval: null });
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : "Could not save settings." };
+    }
+  }
+
+  private disposeClient(): void {
+    this.writerAbort?.abort();
+    this.writerAbort = null;
+    this.generation++;
+    if (this.loginTimer) clearTimeout(this.loginTimer);
+    this.loginTimer = null;
+    this.live?.removeAllListeners();
+    this.live = null;
+    this.codex?.stop();
+    this.codex = null;
+    this.apiClient?.stop();
+    this.apiClient = null;
+  }
+
+  disconnect(): void {
+    this.stop();
+    this.disposeClient();
+    this.patch({ auth: { state: "signed_out" }, statusText: "Disconnected", messages: [], activity: [], plan: [], pendingApproval: null, blockedNotice: null });
+  }
+
+  async connectProvider(apiKey?: string): Promise<{ ok: boolean; message?: string }> {
+    if (this.state.running) return { ok: false, message: "Stop the current task before changing providers." };
+    const settings = this.state.settings!;
+    if (settings.providerId === "chatgpt") return this.signInChatgpt();
+    try {
+      const client = new ApiAgentClient({ ...settings, instructions: undefined, temperature: settings.temperature ?? undefined, baseUrl: settings.baseUrl || undefined, apiKey });
+      this.disposeClient();
+      this.apiClient = client;
+      const generation = this.generation;
+      await client.start();
+      if (generation !== this.generation) return { ok: false, message: "Connection cancelled." };
+      this.live = new LiveAgentHost(client, this.hands, settings);
+      this.wireLive(this.live);
+      const provider = getProvider(settings.providerId);
+      this.patch({ mode: "live", auth: { state: "signed_in", method: provider.id === "ollama" ? "local" : "api_key", providerId: provider.id }, messages: [], activity: [], plan: [], stopped: false, statusText: "Provider configured. Send a message to verify model access." });
+      return { ok: true, message: "Connected for this session. Model access is checked on your first message." };
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : "Could not connect provider." };
+    }
+  }
+
+  private newCodex(): CodexAppServerClient {
+    const codexHome = path.join(app.getPath("userData"), "codex");
+    mkdirSync(codexHome, { recursive: true });
+    const command = process.env.LALIME_CODEX_BIN?.trim();
+    return new CodexAppServerClient({ ...(command ? { command } : {}), codexHome });
+  }
+
+  dispose(): void {
+    this.stop();
+    this.disposeClient();
+    this.patch({ auth: { state: "signed_out" }, statusText: "Disconnected" });
+  }
+
   private patch(partial: Partial<AppSnapshot>): void {
     this.state = { ...this.state, ...partial };
     this.emit("snapshot", this.getSnapshot());
@@ -226,68 +313,79 @@ export class SessionController extends EventEmitter {
   }
 
   async signInChatgpt(): Promise<{ ok: boolean; message?: string }> {
+    if (this.state.running) return { ok: false, message: "Stop the current task before signing in." };
+    this.disposeClient();
+    const generation = this.generation;
+    const client = this.newCodex();
+    this.codex = client;
+    this.patch({ mode: "live", auth: { state: "signing_in" }, statusText: "Starting ChatGPT sign-in" });
     try {
-      this.codex?.stop();
-      const fromEnv = process.env.LALIME_CODEX_BIN?.trim();
-      this.codex = new CodexAppServerClient(fromEnv ? { command: fromEnv } : {});
-      await this.codex.start();
-      const { authUrl } = await this.codex.loginWithChatgpt();
-      if (authUrl) {
-        await shell.openExternal(authUrl);
+      await client.start();
+      const activate = async (): Promise<void> => {
+        const result = await client.readAccount();
+        if (generation !== this.generation || result.account?.type !== "chatgpt") return;
+        if (this.loginTimer) clearTimeout(this.loginTimer);
+        this.loginTimer = null;
+        this.live = new LiveAgentHost(client, this.hands, this.state.settings);
+        this.wireLive(this.live);
+        this.patch({ auth: { state: "signed_in", method: "chatgpt", providerId: "chatgpt", email: result.account.email ?? undefined }, statusText: "Signed in with ChatGPT" });
+      };
+      const existing = await client.readAccount();
+      if (existing.account?.type === "chatgpt") {
+        await activate();
+        return { ok: true };
       }
-      this.live = new LiveAgentHost(this.codex, this.hands);
-      this.wireLive(this.live);
-      const auth: AuthStatus = { state: "signed_in", method: "chatgpt" };
-      this.patch({
-        mode: "live",
-        auth,
-        statusText: authUrl
-          ? "Finish signing in with ChatGPT in your browser, then ask Lalime anything"
-          : "Signed in with ChatGPT",
+      const { authUrl, loginId } = await client.loginWithChatgpt();
+      if (generation !== this.generation) return { ok: false, message: "Sign-in cancelled." };
+      client.on("account/login/completed", (result: { loginId?: string; success?: boolean }) => {
+        if (generation !== this.generation || result.loginId !== loginId) return;
+        if (result.success) void activate().catch(() => this.loginFailed(generation));
+        else this.loginFailed(generation);
       });
-      return { ok: true, message: authUrl };
-    } catch (err) {
-      const raw = err instanceof Error ? err.message : "Codex app-server unavailable";
-      const message = /not found|ENOENT|spawn/i.test(raw)
-        ? codexMissingMessage(resolveCodexCommand())
-        : `${raw} Sign in with your own OpenAI API key, or run "codex login" once in a terminal.`;
-      this.patch({
-        mode: "live",
-        auth: { state: "error", message },
-        statusText: "Sign-in needed",
-      });
-      return { ok: false, message };
+      this.loginTimer = setTimeout(() => this.loginFailed(generation), 180000);
+      this.loginTimer.unref?.();
+      if (authUrl) {
+        const url = new URL(authUrl);
+        if (url.protocol !== "https:" || !["auth.openai.com", "chatgpt.com"].includes(url.hostname) || url.username || url.password || url.port) throw new Error("Unexpected sign-in destination.");
+        await shell.openExternal(url.toString());
+      } else {
+        await activate();
+      }
+      if (this.state.auth.state !== "signed_in") this.patch({ statusText: "Finish ChatGPT sign-in in your browser" });
+      return { ok: true, message: "Finish sign-in in your browser." };
+    } catch {
+      this.loginFailed(generation);
+      return { ok: false, message: "ChatGPT sign-in failed. Check that Codex is installed and try again." };
     }
   }
 
+  private loginFailed(generation: number): void {
+    if (generation !== this.generation) return;
+    this.disposeClient();
+    this.patch({ auth: { state: "error", message: "ChatGPT sign-in did not complete. Please try again." }, statusText: "Sign-in needed" });
+  }
+
   async signInApiKey(apiKey: string): Promise<{ ok: boolean; message?: string }> {
-    if (!apiKey.trim().startsWith("sk-")) {
-      return { ok: false, message: "That does not look like an OpenAI API key." };
-    }
+    if (this.state.running) return { ok: false, message: "Stop the current task before signing in." };
+    if (!apiKey.trim().startsWith("sk-")) return { ok: false, message: "That does not look like an OpenAI API key." };
+    this.disposeClient();
+    const generation = this.generation;
+    const client = this.newCodex();
+    this.codex = client;
     try {
-      this.codex?.stop();
-      const fromEnv = process.env.LALIME_CODEX_BIN?.trim();
-      this.codex = new CodexAppServerClient(fromEnv ? { command: fromEnv } : {});
-      await this.codex.start();
-      await this.codex.loginWithApiKey(apiKey.trim());
-      this.live = new LiveAgentHost(this.codex, this.hands);
+      await client.start();
+      if (generation !== this.generation) return { ok: false, message: "Sign-in cancelled." };
+      await client.loginWithApiKey(apiKey.trim());
+      if (generation !== this.generation) return { ok: false, message: "Sign-in cancelled." };
+      this.live = new LiveAgentHost(client, this.hands, this.state.settings);
       this.wireLive(this.live);
-      this.patch({
-        mode: "live",
-        auth: { state: "signed_in", method: "api_key", email: "api-key" },
-        statusText: "Signed in with your API key",
-      });
+      this.patch({ mode: "live", auth: { state: "signed_in", method: "api_key", providerId: "openai" }, stopped: false, statusText: "Signed in with your API key" });
       return { ok: true };
-    } catch (err) {
-      const raw = err instanceof Error ? err.message : "API key sign-in failed";
-      const message = /not found|ENOENT|spawn/i.test(raw)
-        ? codexMissingMessage(resolveCodexCommand())
-        : raw;
-      this.patch({
-        mode: "live",
-        auth: { state: "error", message },
-        statusText: "Sign-in needed",
-      });
+    } catch {
+      if (generation !== this.generation) return { ok: false, message: "Sign-in cancelled." };
+      this.disposeClient();
+      const message = "API key sign-in failed. Check your key and Codex installation.";
+      this.patch({ mode: "live", auth: { state: "error", message }, statusText: "Sign-in needed" });
       return { ok: false, message };
     }
   }
@@ -307,28 +405,39 @@ export class SessionController extends EventEmitter {
   }
 
   private wireLive(live: LiveAgentHost): void {
-    live.on("status", (text: string) => this.patch({ statusText: text }));
+    const active = () => this.live === live && !this.state.stopped;
+    live.on("taskGrants", (taskGrants) => { if (this.live === live) this.patch({ taskGrants }); });
+    live.on("approvalQueue", (pendingApprovalCount: number, approvalQueue: readonly ApprovalQueueEntry[]) => {
+      if (this.live !== live) return;
+      const current = this.state.pendingApproval?.action.id;
+      this.patch({ pendingApprovalCount, approvalQueue,
+        ...(!approvalQueue.some((entry) => entry.actionId === current) ? { pendingApproval: null } : {}) });
+    });
+    live.on("status", (text: string) => { if (active()) this.patch({ statusText: text }); });
     // Buffer Codex deltas — Deliberate writes the visible reply at turn end.
     live.on("delta", () => {
+      if (!active()) return;
       this.patch({ statusText: "Working…" });
     });
     live.on("messageDone", (text: string) => {
+      if (!active()) return;
       this.agentConclusion = text;
       this.patch({ statusText: "Preparing a clear reply…" });
     });
     live.on("plan", (steps: PlanStep[]) => this.patch({ plan: steps }));
     live.on("approvalNeeded", (pending: PendingApproval) => {
+      if (!active()) return;
       this.patch({ pendingApproval: pending, statusText: "Waiting for your OK" });
       void this.glossApproval(pending);
     });
     live.on("blocked", (decision) => {
+      if (!active()) return;
       this.turnBlocked.push({
         plainEnglish: decision.plainEnglish,
         tier: decision.tier,
       });
       this.patch({
         blockedNotice: decision,
-        pendingApproval: null,
         statusText: "Blocked by Guardian",
         messages: [
           ...this.state.messages,
@@ -342,6 +451,7 @@ export class SessionController extends EventEmitter {
       });
     });
     live.on("activity", (entry) => {
+      // Keep recovery for a change that finished after Stop. Do not credit it to a later task.
       const activity: ActivityEntry = {
         id: id("a"),
         at: Date.now(),
@@ -350,14 +460,18 @@ export class SessionController extends EventEmitter {
         undoable: entry.undoable,
         actionId: entry.actionId,
       };
+      if (active() && !entry.stale) this.turnActivity.unshift(activity);
       this.patch({ activity: [activity, ...this.state.activity] });
     });
     live.on("turnDone", () => {
+      if (!active()) return;
       void this.finishTurnWithWriter();
     });
     live.on("error", (message: string) => {
+      if (!active()) return;
       this.patch({
         running: false,
+        pendingApproval: null,
         statusText: "Something went wrong",
         messages: [
           ...this.state.messages,
@@ -384,7 +498,7 @@ export class SessionController extends EventEmitter {
         details: pending.decision.details,
         undoable: pending.decision.undoable,
         targetHint: target,
-      });
+      }, this.writerAbort?.signal);
       if (!gloss.used || !this.state.pendingApproval) return;
       if (this.state.pendingApproval.action.id !== pending.action.id) return;
       this.patch({
@@ -400,16 +514,33 @@ export class SessionController extends EventEmitter {
   }
 
   private async finishTurnWithWriter(): Promise<void> {
-    const fallback = this.agentConclusion.trim() || "Done.";
+    if (this.state.stopped || !this.state.running) return;
+    const generation = this.generation;
+    const writerSignal = this.writerAbort?.signal;
+    const fallback = this.agentConclusion.trim() || "The provider returned no answer. Please try again.";
     const outcome = this.inferOutcome();
     const facts = buildFactsPacket({
       userRequest: this.turnUserRequest,
       outcome,
-      actions: this.state.activity.slice(0, 6).map((a) => ({
-        summary: a.summary,
-        status: a.undone ? "skipped" : "done",
-        undoable: a.undoable,
-      })),
+      actions: this.turnActivity.slice(0, 6).map((a) => {
+        let summary = a.summary;
+        if (a.undoResult) {
+          const partial = a.undoResult.restored && a.undoResult.total && a.undoResult.restored < a.undoResult.total;
+          const label = a.undoResult.status === "restored" ? "Restored" : partial
+            ? `Partly restored (${a.undoResult.restored} of ${a.undoResult.total})` : "Undo failed";
+          if (a.undoResult.status === "failed") summary = `${label}${partial ? ":" : " for change:"} ${summary}`;
+          const complete = boundedDisplayText(summary);
+          summary = complete.fullLength <= 240 ? complete.text : `${label} for the selected change. See the change details for complete paths.`;
+        }
+        return { summary, status: a.undone ? "skipped" as const : a.undoResult?.status === "failed" ? "failed" as const : "done" as const,
+          undoable: a.undoable && !a.undone };
+      }),
+      errors: this.turnActivity.flatMap((a) => {
+        if (a.undoResult?.status !== "failed") return [];
+        const reason = boundedDisplayText(a.undoResult.reason);
+        return [{ code: "UNDO_FAILED", plainHint: reason.fullLength <= 240 ? reason.text
+          : "Undo could not be fully verified. See the change details for the complete file and recovery locations." }];
+      }),
       blocked: this.turnBlocked.length ? this.turnBlocked : undefined,
       agentConclusion: fallback,
     });
@@ -442,8 +573,9 @@ export class SessionController extends EventEmitter {
       });
       const result = await writer.composeReply(facts, {
         fallbackText: fallback,
+        signal: writerSignal,
         onDelta: (chunk) => {
-          if (!this.streamingMessageId) return;
+          if (!this.streamingMessageId || generation !== this.generation || writerSignal?.aborted) return;
           this.patch({
             messages: this.state.messages.map((m) =>
               m.id === this.streamingMessageId
@@ -453,6 +585,7 @@ export class SessionController extends EventEmitter {
           });
         },
       });
+      if (generation !== this.generation || writerSignal?.aborted) return;
       if (result.error) setWriterLastError(result.error);
       else setWriterLastError(undefined);
       this.patch({
@@ -465,9 +598,11 @@ export class SessionController extends EventEmitter {
         pendingApproval: null,
       });
     } catch {
+      if (generation !== this.generation || writerSignal?.aborted) return;
       this.publishAssistant(fallback);
       this.patch({ running: false, statusText: "Done", pendingApproval: null });
     } finally {
+      if (generation !== this.generation || writerSignal?.aborted) return;
       this.streamingMessageId = null;
       this.agentConclusion = "";
       this.turnBlocked = [];
@@ -486,7 +621,8 @@ export class SessionController extends EventEmitter {
   private inferOutcome(): FactsOutcome {
     if (this.turnBlocked.length) return "blocked";
     if (this.state.stopped) return "partly_done";
-    if (this.state.activity.some((a) => a.undoable)) return "done";
+    if (this.turnActivity.some((a) => a.undoResult?.status === "failed")) return "partly_done";
+    if (this.turnActivity.some((a) => a.undoable)) return "done";
     if (this.agentConclusion.trim()) return "done";
     return "partly_done";
   }
@@ -497,36 +633,94 @@ export class SessionController extends EventEmitter {
 
   stop(): void {
     this.abort = true;
+    this.writerAbort?.abort();
     this.hands.stop();
-    void this.live?.stop();
+    this.generation++;
+    void this.live?.stop().catch(() => {});
     for (const w of this.approvalWaiters) w("not_now");
     this.approvalWaiters = [];
     this.patch({
       running: false,
       stopped: true,
+      taskGrants: [],
+      pendingApprovalCount: 0,
+      approvalQueue: [],
       pendingApproval: null,
       statusText: "Stopped",
     });
   }
 
-  async respondApproval(choice: ApprovalChoice): Promise<void> {
+  beginApprovalHold(actionId: string): boolean {
+    return this.state.pendingApproval?.action.id === actionId && Boolean(this.live?.beginApprovalHold(actionId));
+  }
+
+  cancelApprovalHold(actionId: string): void {
+    this.live?.cancelApprovalHold(actionId);
+  }
+
+  revokeTaskGrant(grantId: string): boolean {
+    return this.live?.revokeTaskGrant(grantId) ?? false;
+  }
+
+  async respondApproval(choice: ApprovalChoice, actionId?: string): Promise<boolean> {
+    if (actionId && this.state.pendingApproval?.action.id !== actionId) return false;
     if (this.live && this.state.mode === "live") {
-      this.live.respondApproval(choice);
-      this.patch({ pendingApproval: null });
-      return;
+      const accepted = this.live.respondApproval(choice, actionId);
+      if (accepted) this.patch({ pendingApproval: null });
+      return accepted;
     }
     const waiters = this.approvalWaiters.splice(0);
     for (const w of waiters) w(choice);
+    return waiters.length > 0;
   }
 
   async undo(activityId: string): Promise<void> {
     const entry = this.state.activity.find((a) => a.id === activityId);
-    if (!entry?.actionId) return;
-    const result = await this.hands.undo(entry.actionId);
-    if (!result.ok) return;
+    if (!entry?.actionId || !entry.undoable || entry.undone || this.pendingUndos.has(activityId)) return;
+    const live = this.live;
+    const pending = live ? this.state.pendingApproval : null;
+    const withdrawnCount = pending ? Math.max(1, this.state.pendingApprovalCount ?? 1) : 0;
+    const finishUndo = live?.beginUserUndo();
+    if (pending) {
+      const summary = boundedDisplayText(pending.action.summary ?? pending.decision.plainEnglish).text;
+      const message = boundedDisplayText(`Lalime cancelled ${withdrawnCount === 1 ? "the waiting approval" : `${withdrawnCount} waiting approvals`} because you pressed Undo: ${summary}`
+        + (withdrawnCount > 1 ? `, and ${withdrawnCount - 1} more.` : ".")).text;
+      const approvalWithdrawal = { actionId: pending.action.id, summary, reason: "user_undo" as const, message, withdrawnCount };
+      this.patch({
+        activity: this.state.activity.map((item) => item.id === activityId ? { ...item, approvalWithdrawal } : item),
+        messages: [...this.state.messages, { id: id("m"), role: "assistant", content: message, createdAt: Date.now() }],
+      });
+    }
+    this.writerAbort?.abort();
+    this.writerAbort = new AbortController();
+    if (this.streamingMessageId) {
+      this.patch({ messages: this.state.messages.filter((message) => message.id !== this.streamingMessageId), running: false });
+      this.streamingMessageId = null;
+    }
+    this.pendingUndos.add(activityId);
+    let result: HandsResult;
+    try {
+      result = await this.hands.undo(entry.actionId);
+    } catch {
+      result = { ok: false, output: "The restore failed. You can try Undo again." };
+    } finally {
+      this.pendingUndos.delete(activityId);
+    }
+    if (!this.state.activity.some((a) => a.id === activityId)) { finishUndo?.(); return; }
+    try {
+      if (live && this.live === live) live.recordUndoResult(entry.actionId, entry.summary, result);
+    } finally { finishUndo?.(); }
+    if (!result.ok) {
+      this.patch({ activity: this.state.activity.map((a) => a.id === activityId
+        ? { ...a, undoResult: { status: "failed", reason: result.output || "The restore could not be verified.", ...result.restoreProgress } } : a), statusText: result.restoreProgress && result.restoreProgress.restored > 0 && result.restoreProgress.restored < result.restoreProgress.total ? "Partly restored" : "Undo failed" });
+      const updated = this.state.activity.find((a) => a.id === activityId)!;
+      this.turnActivity = [updated, ...this.turnActivity.filter((a) => a.id !== activityId)];
+      return;
+    }
     const activity: ActivityEntry[] = this.state.activity.map((a) =>
-      a.id === activityId ? { ...a, undone: true, summary: `Undone: ${a.summary}` } : a,
+      a.id === activityId ? { ...a, undone: true, undoResult: { status: "restored", ...result.restoreProgress }, summary: `Undone: ${a.summary}` } : a,
     );
+    this.turnActivity = [activity.find((a) => a.id === activityId)!, ...this.turnActivity.filter((a) => a.id !== activityId)];
     this.patch({
       activity,
       messages: [
@@ -534,7 +728,7 @@ export class SessionController extends EventEmitter {
         {
           id: id("m"),
           role: "assistant",
-          content: "All set — I put things back. Nothing permanent was lost.",
+          content: "The selected change was restored.",
           createdAt: Date.now(),
         },
       ],
@@ -604,11 +798,14 @@ export class SessionController extends EventEmitter {
 
   private async runLive(userText: string): Promise<void> {
     this.abort = false;
+    this.writerAbort?.abort();
+    this.writerAbort = new AbortController();
     this.hands.resume();
     this.streamingMessageId = null;
     this.agentConclusion = "";
     this.turnUserRequest = userText;
     this.turnBlocked = [];
+    this.turnActivity = [];
     this.patch({
       messages: [
         ...this.state.messages,

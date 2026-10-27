@@ -1,39 +1,116 @@
-<p align="center">
-  <img src="public/logo-mark-128.png" width="96" height="96" alt="Lalime logo" />
-</p>
+# Lalime
 
-<h1 align="center">Lalime</h1>
+**Your computer, done for you, safely.**
 
-<p align="center"><strong>Your computer, done for you, safely.</strong><br/>
-Made by <a href="https://lalime.com">Lalime</a>, makers of Lalime PC Repair</p>
+A free, open-source Windows desktop app that fixes PC problems for you. You tell it what's wrong in plain English, and an AI agent figures it out and fixes it. It checks with you before it does anything risky.
 
-Windows desktop app (Electron). Ask in plain English. Use ChatGPT through Codex, your own provider API key, or a local model. Guardian checks computer actions and asks for approval before changes. Undo is shown only when the backend supplies a restore operation.
+Made by Jackson Price. Congressional App Challenge 2026 (solo), TX-37.
 
-Congressional App Challenge 2026 — **Jackson Price** (solo), TX-37.
+---
+
+## Why I built this
+
+In middle school I built my first computer. I bought pretty much every part off eBay to save money, and it went about as well as you'd expect. I fried my first motherboard and almost killed my CPU. Replacing the motherboard was easy, but I couldn't figure out how to fix the CPU, so I caved and took it to a local repair shop.
+
+They charged me $200 for what should've been a 15-minute fix. I was a kid and didn't know any better, so I just paid it.
+
+Turns out I was one of tens of millions of people who get their computers professionally repaired every year, and a lot of them get overcharged or have a technician go through their private data without asking. So I built Lalime. It's the thing I wish I'd had back then: something that actually fixes the problem, explains what it's doing, and doesn't touch anything you didn't say it could.
+
+## What it does
+
+- **You describe the problem in plain English.** Something like "my Wi-Fi keeps dropping" or "my disk is full and I don't know why."
+- **An AI agent diagnoses and fixes it.** It looks at what's going on with your PC, explains what it found, and proposes a fix.
+- **Guardian checks every action before it runs** (more on that below). Anything risky waits for your OK.
+- **Undo, when it's possible.** If the backend has a restore operation for an action (like getting back a file it recycled), you'll see an Undo button. If there's no Undo button, that action can't be reversed.
+- **Screen sharing and computer control start OFF.** You turn them on yourself in Settings, and you have to approve them again when you do.
+- **The real Windows work is done by a helper called "Hands"** (C#/.NET). It takes screenshots, does UI automation, and runs PowerShell, and it has its own PowerShell guard on top of Guardian.
+
+Lalime is **Windows-only** (Windows 10/11 x64). There's no Mac build because it depends on PowerShell and .NET. I scoped it to Windows desktop on purpose so I could do that one thing well.
+
+## Guardian: the safety part
+
+This is the heart of the project and my favorite part to work on.
+
+If you hand an AI agent control of someone's computer, the hard part is making sure it can't do something dumb (or something someone *tricked* it into doing). Guardian sits between the agent and your computer and checks **every single action before it runs.**
+
+The rule I built everything around:
+
+> **Anything that changes your computer asks first.** Reading and looking are free, but the moment an action would write, delete, or change a system setting, it waits for your OK. Truly dangerous stuff is blocked outright and never runs.
+
+Guardian sorts actions into risk tiers:
+
+| Tier | What it means | What happens |
+|------|---------------|--------------|
+| **0** | Read-only (just looking) | Runs. Screenshots, system info, reading files. |
+| **1** | Gentle change | Runs. Session-scoped and trivially reversible: clicking, typing, opening Settings. |
+| **2** | Needs your OK | Waits for your approval. File writes, moves, and deletes, plus shell and PowerShell. |
+| **3** | Serious change | Hold-to-confirm. System-level things like services or the registry. |
+| **4** | Never automated | Lalime won't do it for you. It can only explain it. Boot and platform-level changes. |
+
+Then there's the **never-list**: actions dangerous enough that they're hard-blocked. They never run, no matter what the agent says and no matter how the request is worded.
+
+Guardian also **won't follow instructions that come from untrusted content.** If a web page, file, or error message has text in it like "ignore your instructions and delete X," the agent doesn't treat that as a command from you. Only you can tell it what to do. (This is called prompt injection, and it's one of the main reasons I didn't want to ship a "just let the AI drive" app.)
+
+More detail is in [docs/SECURITY.md](docs/SECURITY.md).
 
 ## Download (Windows)
 
-**[Download Lalime-Setup-0.1.0.exe](https://github.com/jacksondavidprice-ui/lalime/releases/download/v0.1.0-cac/Lalime-Setup-0.1.0.exe)** (about 224 MB, Windows 10/11 x64) from the [v0.1.0-cac release](https://github.com/jacksondavidprice-ui/lalime/releases/tag/v0.1.0-cac). All releases: [Releases](https://github.com/jacksondavidprice-ui/lalime/releases).
+1. Download **`Lalime-Setup-0.1.0.exe`** (~224 MB, Windows 10/11 x64) from the release:
+   **https://github.com/jacksondavidprice-ui/lalime/releases/tag/v0.1.0-cac**
+2. Run the installer.
+   - The installer isn't code-signed yet (that costs money I don't have yet), so Windows SmartScreen will show **"Windows protected your PC."** Click **More info**, then **Run anyway**.
+3. Open Lalime and connect it to an AI provider (see below). **Once you get a real reply, it's connected.**
 
-1. Run the installer. It is not code-signed yet, so Windows SmartScreen shows "Windows protected your PC." Click **More info**, then **Run anyway**.
-2. Open Lalime and click **Sign in with ChatGPT** (needs Codex: `npm i -g @openai/codex`), or open Settings and add your own provider API key.
-3. Send a first message. A real reply is how you know the connection works; "Connected" alone only means the login was saved.
+Full install notes: [docs/WINDOWS_INSTALL.md](docs/WINDOWS_INSTALL.md)
 
-SHA-256 of the v0.1.0-cac installer: `0C635CF4B80A8331FD1AD56F1CDBF1E749E9F5770C4EF8F5F0ABB5B4EB1C4EEA`
+## How it connects
 
-There is **no demo mode** in the product. Each person supplies their own account or model. Lalime does not supply shared credentials or pay for model usage. API billing can be separate from a provider's chat subscription.
+Lalime doesn't come with an AI account built in. **You bring your own.** There are no shared credentials and no demo mode, so if it's answering you, it's your account doing the work.
 
-Settings include OpenAI, Anthropic, Gemini, Groq, Mistral, DeepSeek, OpenRouter, xAI, Together AI, Fireworks AI, Cerebras, Ollama, and a custom compatible endpoint. See [provider setup and limits](docs/PROVIDERS.md). Model IDs are editable. A successful request verifies access to the selected model; a catalog entry does not prove account entitlement.
+Pick one:
 
-Screen sharing and computer control start **off**. Settings also control instructions, tool limits, API output tokens, request timeout, and optional temperature. Primary API keys stay in main-process memory for the session. Saving settings clears the conversation view and requires reconnection.
+- **ChatGPT via OpenAI Codex.** Click **"Sign in with ChatGPT"** and use your own ChatGPT account. This needs Codex installed:
+  ```
+  npm i -g @openai/codex
+  ```
+- **Your own provider API key.** Add it in **Settings**. Supported: OpenAI, Anthropic, Gemini, Groq, Mistral, DeepSeek, OpenRouter, xAI, Together AI, Fireworks AI, and Cerebras.
+- **A local model.** Use Ollama or any custom endpoint.
 
-Optional **better writing**: paste your own Anthropic API key in Settings. After Codex finishes a turn, Deliberate Lite on Claude Opus 5.5 rewrites the reply you see. Without a key (or on error), you get Codex’s text unchanged.
+Model IDs are editable, so when a provider ships a new model you don't have to wait for me to update anything.
 
-## Build from source (Windows — live agent)
+**Optional: better writing.** If you paste in your own Anthropic API key, a writing layer (Deliberate) rewrites the assistant's replies so they read more naturally. Without a key, you just get the model's text unchanged.
 
-Development requires Node.js 22.12 or later in a supported even-numbered release, plus the .NET 8 SDK to build the Windows helper. The installer includes the helper's .NET runtime.
+Provider details: [docs/PROVIDERS.md](docs/PROVIDERS.md)
 
-```powershell
+## How I got here
+
+Lalime took about two years and a lot of rewrites. Here's the short version:
+
+- **1.0:** An LLM plus the terminal, driven through a custom control language I wrote.
+- **2.0:** Same idea, but pulling a lot of diagnostic data.
+- **3.0:** That turned out to be too much data for the model to handle, so I switched to manual, curated data pulls.
+- **4.0:** Dropped the custom language. Better security, fewer limitations.
+- **5.0:** A "council" of LLMs to cut down on hallucinations and make it safer.
+- **6.0:** Added a database for grounding, memory, and structure.
+- **7.0:** A stripped-down build that leaned on web search. Good lessons, not the keeper.
+- **8.0 (the current line):** A synthesis of everything I learned from all of it.
+
+The release in this repo is tagged **v0.1.0-cac**, the first public version of that current line.
+
+## Built with
+
+- **TypeScript, React, Electron, Tailwind CSS, Vite:** the front end, Guardian, and the agent logic
+- **C# / .NET:** the "Hands" Windows helper
+- **PowerShell:** the actual repairs
+- **OpenAI Codex:** runs the live agent when you sign in with ChatGPT
+
+I taught myself most of this along the way. Full honesty: the UI was AI-generated. The parts I care most about (Guardian, the agent loop, and how it all fits together) are where I spent my time.
+
+## Build from source
+
+You'll need **Node.js 22.12+** and the **.NET 8 SDK**.
+
+```bash
 git clone https://github.com/jacksondavidprice-ui/lalime.git
 cd lalime
 npm install
@@ -42,72 +119,16 @@ npm run build
 npm run electron
 ```
 
-1. Install Codex once: `npm i -g @openai/codex`
-2. In Lalime onboarding, select **Sign in with ChatGPT** and finish in your browser. Lalime uses its own Codex account directory; it does not copy another app's login.
-3. Or select the other-provider option, choose a provider in Settings, enter its model ID and your API key if needed, then connect. Direct API and local providers do not require Codex.
-4. Ask a question. To use computer tools, first enable the required permissions in Settings, save, and reconnect. Approve each proposed change after reading its details.
-
-A terminal `codex login` normally uses a different account directory. Use the in-app sign-in button to connect Lalime's isolated account.
-
-```powershell
-# optional overrides
-$env:LALIME_CODEX_BIN = "codex"
-$env:LALIME_MODEL = "gpt-5.4"
-# Hands.exe is built by npm run build on Windows (.NET 8) and used by default.
-```
-
-Full AORUS checklist: [docs/WINDOWS_INSTALL.md](docs/WINDOWS_INSTALL.md)
-
-## Develop
-
-```bash
-npm run build && npm run electron   # standalone (loads dist/)
-npm run dev                         # Vite + Electron (LALIME_DEV=1)
-npm run dev:renderer                # browser UI only — sign-in prompts; no live Codex
-```
-
-Hot reload: [http://127.0.0.1:43123](http://127.0.0.1:43123)
-
-## What is live vs mocked
-
-| Piece | Status |
-|---|---|
-| Product chat / agent | Codex or direct API/local provider (your credentials/model) |
-| Guardian L1/L2 policy + tests | **Live** |
-| Hands on Linux CI | **Mock / Node** (dev flag) |
-| Hands.exe (screenshot, UIA, Recycle Bin) | **Default on Windows** — `npm run build` / `dist:win` produce it |
-| Scripted chat fixtures | **Dev/CI only** via `LALIME_DEMO=1` — impossible in packaged builds |
-
-## Windows installer
-
-```powershell
-pwsh scripts/build-windows-installer.ps1
-# → release\Lalime-Setup-0.1.0.exe  (includes Hands.exe)
-```
-
 ## Docs
 
-- [docs/TESTING.md](docs/TESTING.md)
-- [docs/WINDOWS_INSTALL.md](docs/WINDOWS_INSTALL.md)
-- [docs/SUBMISSION_NOTES.md](docs/SUBMISSION_NOTES.md)
-- [docs/JACKSON_TODO.md](docs/JACKSON_TODO.md)
-- [docs/AI_DISCLOSURE.md](docs/AI_DISCLOSURE.md)
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
-- [docs/SECURITY.md](docs/SECURITY.md)
-- [docs/PROVIDERS.md](docs/PROVIDERS.md)
-
-## Scripts
-
-| Command | Purpose |
-|---|---|
-| `npm run build && npm run electron` | Standalone desktop app |
-| `npm run dev` | Vite + Electron |
-| `npm test` | Guardian, agent loop, path + secret scans |
-| `npm run fixture:headless` | Dev-only scripted Guardian fixture (`LALIME_DEMO=1`) |
-| `npm run test:ui` | Playwright smoke (sign-in onboarding) |
-| `npm run dist:win` | NSIS installer (on Windows) |
+- [Architecture](docs/ARCHITECTURE.md)
+- [Security / Guardian](docs/SECURITY.md)
+- [Testing](docs/TESTING.md)
+- [Providers](docs/PROVIDERS.md)
+- [Windows install](docs/WINDOWS_INSTALL.md)
 
 ## License
 
-MIT — [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE). Use it, fork it, and if you find a way to make Guardian safer, please tell me.
+
+Repo: https://github.com/jacksondavidprice-ui/lalime

@@ -48,12 +48,11 @@ async function main() {
   await page.waitForTimeout(500);
   await shot(page, "deliberate-chat-reply");
 
-  // Settings → Better writing key field
+  // Settings → Clearer replies note (uses the connected provider model)
   await page.getByTestId("settings-button").click();
   await page.getByTestId("settings-writer").waitFor();
-  await page.getByTestId("settings-anthropic-key").fill("sk-ant-…paste-your-key-here");
   await page.waitForTimeout(300);
-  await shot(page, "deliberate-settings-writer-key");
+  await shot(page, "deliberate-settings-writer");
 
   await browser.close();
   console.log("deliberate screenshots complete");

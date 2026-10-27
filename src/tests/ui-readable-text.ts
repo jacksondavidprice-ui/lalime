@@ -9,7 +9,7 @@ const initial: AppSnapshot = {
   mode: "live", auth: { state: "signed_in", method: "chatgpt" }, onboardingComplete: true,
   messages: [{ id: "u1", role: "user", content: "Review sample", createdAt: 100 }, { id: "a1", role: "assistant", content: "Review the next step.", createdAt: 110 }],
   plan: [], activity: [], pendingApproval: null, pendingApprovalCount: 0, blockedNotice: null,
-  running: false, stopped: false, statusText: "Ready", hands: { backend: "node", available: true }, writer: { enabled: false, keyHint: null },
+  running: false, stopped: false, statusText: "Ready", hands: { backend: "node", available: true }, writer: { enabled: false, providerId: null, model: null },
 };
 const browser = await chromium.launch({ headless: true, channel: process.env.LALIME_BROWSER_CHANNEL || undefined });
 const results: string[] = [];

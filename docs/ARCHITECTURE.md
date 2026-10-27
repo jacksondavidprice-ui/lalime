@@ -19,7 +19,7 @@ React + TypeScript + Tailwind. No Node integration. Talks to the main process th
 - `ApiAgentClient` — direct OpenAI-compatible and Anthropic Messages requests. Returns tool proposals to the same host. It does not run computer actions itself.
 - `shared/providers.ts` — provider catalog with official endpoint and protocol sources.
 - `shared/settings.ts` — settings defaults and validation. `settings-store.ts` saves non-secret preferences in Electron user data.
-- `writer/` — Deliberate Lite (Opus 5.5 Messages API, BYO Anthropic key in safeStorage). Falls back to Codex text when no key / error / timeout.
+- `writer/` — Deliberate Lite (single rewrite pass on the user’s selected provider/model). Falls back to the agent’s own text when no provider is connected, or on error / timeout / abort.
 - Guardian — every `ProposedAction` is evaluated before Hands runs it.
 - Hands client — mock / Node on Linux; Hands.exe by default on Windows.
 

@@ -22,7 +22,7 @@ const initial: Snapshot = {
     { id: "earlier", at: 20, summary: "Moved earlier sample", actionId: "move-old", undoable: true },
   ],
   pendingApproval: null, pendingApprovalCount: 0, blockedNotice: null, running: false, stopped: false, statusText: "Ready",
-  hands: { backend: "node", available: true }, writer: { enabled: false, keyHint: null },
+  hands: { backend: "node", available: true }, writer: { enabled: false, providerId: null, model: null },
 };
 const message = "Lalime withdrew 2 waiting approvals because Undo changed this task.";
 const notice: WithdrawalNotice = { actionId: "pending-step", summary: "Move another sample", reason: "user_undo", message, withdrawnCount: 2 };

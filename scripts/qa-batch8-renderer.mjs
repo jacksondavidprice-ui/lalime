@@ -27,7 +27,7 @@ async function snapshotFor(commands) {
   const state = { mode: 'live', auth: { state: 'signed_in', method: 'local' }, onboardingComplete: true,
     messages: [], plan: [], activity: [], pendingApproval: null, pendingApprovalCount: 0, approvalQueue: [],
     blockedNotice: null, running: true, stopped: false, statusText: 'Waiting for your OK',
-    hands: { backend: 'mock', available: true }, writer: { enabled: false, keyHint: null } };
+    hands: { backend: 'mock', available: true }, writer: { enabled: false, providerId: null, model: null } };
   host.on('approvalNeeded', card => { state.pendingApproval = card; });
   host.on('approvalQueue', (count, entries) => { state.pendingApprovalCount = count; state.approvalQueue = entries; });
   try {

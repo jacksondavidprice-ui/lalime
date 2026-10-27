@@ -58,9 +58,7 @@ export function ChatHome() {
   const [text, setText] = useState("");
   const [railOpen, setRailOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(!signedIn);
-  const [anthropicKey, setAnthropicKey] = useState("");
   const [settingsMsg, setSettingsMsg] = useState<string | null>(null);
-  const [writerMsg, setWriterMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState(false);
@@ -384,94 +382,19 @@ export function ChatHome() {
                   {t("settings.writerHeading")}
                 </h3>
                 <p className="mt-2 text-sm text-ink/55">{t("settings.writerBlurb")}</p>
-                <p className="mt-2 text-xs text-muted">
-                  Get a key at{" "}
-                  <a
-                    href="https://console.anthropic.com/settings/keys"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="font-semibold text-ink/60 underline-offset-2 hover:underline"
-                  >
-                    console.anthropic.com
-                  </a>
-                  .
-                </p>
-                {writer.enabled && writer.keyHint && (
-                  <p className="mt-3 text-sm text-ink/60" data-testid="writer-key-hint">
-                    Saved key ending in {writer.keyHint}
-                    {writer.encryptedAtRest === false ? " (kept for this session only)" : ""}.
+                {writer.enabled && writer.model && (
+                  <p className="mt-3 text-sm text-ink/60" data-testid="writer-model-hint">
+                    Using {writer.providerId ? `${writer.providerId} / ` : ""}{writer.model} for clearer replies.
+                  </p>
+                )}
+                {!writer.enabled && (
+                  <p className="mt-3 text-sm text-ink/55" data-testid="writer-disabled-hint">
+                    Connect a provider above to turn this on. ChatGPT sign-in alone keeps the regular reply text.
                   </p>
                 )}
                 {writer.lastError && (
                   <p className="mt-2 text-sm text-ink/55" data-testid="writer-last-error">
                     {writer.lastError}
-                  </p>
-                )}
-                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                  <input
-                    type="password"
-                    value={anthropicKey}
-                    onChange={(e) => setAnthropicKey(e.target.value)}
-                    placeholder={t("settings.writerPlaceholder")}
-                    className="field min-w-0 flex-1 px-3 py-2.5 text-sm"
-                    aria-label="Anthropic writing API key"
-                    autoComplete="off"
-                    data-testid="settings-anthropic-key"
-                  />
-                  <PrimaryButton
-                    tone="ghost"
-                    disabled={busy}
-                    onClick={() => {
-                      void (async () => {
-                        setBusy(true);
-                        const r = await getApi().writerSetKey(anthropicKey);
-                        setBusy(false);
-                        setWriterMsg(
-                          r.ok ? t("settings.writerSaved") : (r.message ?? "Could not save that key. Try again."),
-                        );
-                        if (r.ok) setAnthropicKey("");
-                      })();
-                    }}
-                    data-testid="settings-writer-save"
-                  >
-                    Save
-                  </PrimaryButton>
-                </div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <PrimaryButton
-                    tone="ghost"
-                    disabled={busy || !writer.enabled}
-                    onClick={() => {
-                      void (async () => {
-                        setBusy(true);
-                        const r = await getApi().writerCheckKey();
-                        setBusy(false);
-                        setWriterMsg(r.ok ? t("settings.writerCheckOk") : (r.message ?? "Could not check that key. Try again."));
-                      })();
-                    }}
-                    data-testid="settings-writer-check"
-                  >
-                    Check key
-                  </PrimaryButton>
-                  <PrimaryButton
-                    tone="ghost"
-                    disabled={busy || !writer.enabled}
-                    onClick={() => {
-                      void (async () => {
-                        setBusy(true);
-                        await getApi().writerClearKey();
-                        setBusy(false);
-                        setWriterMsg(t("settings.writerRemoved"));
-                      })();
-                    }}
-                    data-testid="settings-writer-clear"
-                  >
-                    Remove key
-                  </PrimaryButton>
-                </div>
-                {writerMsg && (
-                  <p className="mt-2 whitespace-pre-wrap text-sm text-ink/60" data-testid="writer-msg">
-                    {writerMsg}
                   </p>
                 )}
               </div>

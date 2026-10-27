@@ -23,7 +23,7 @@ export class SignedOutEngine {
     stopped: false,
     statusText: "Sign in to get started",
     hands: { backend: "node", available: true },
-    writer: { enabled: false, keyHint: null },
+    writer: { enabled: false, providerId: null, model: null },
   };
 
   subscribe(cb: Listener): () => void {

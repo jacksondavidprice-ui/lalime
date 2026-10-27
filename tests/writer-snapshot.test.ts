@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AppSnapshot } from "../shared/types.js";
 
 describe("AppSnapshot writer field", () => {
-  it("never carries the raw Anthropic key", () => {
+  it("never carries raw provider credentials", () => {
     const snap: AppSnapshot = {
       mode: "live",
       auth: { state: "signed_out" },
@@ -16,13 +16,13 @@ describe("AppSnapshot writer field", () => {
       stopped: false,
       statusText: "",
       hands: { backend: "node", available: true },
-      writer: { enabled: true, keyHint: "…6789", encryptedAtRest: true },
+      writer: { enabled: true, providerId: "openai", model: "gpt-test" },
     };
     const json = JSON.stringify(snap);
-    expect(json).not.toMatch(/sk-ant-/);
-    expect(snap.writer.keyHint).toBe("…6789");
+    expect(json).not.toMatch(/sk-/);
+    expect(snap.writer.model).toBe("gpt-test");
     expect(Object.keys(snap.writer).sort()).toEqual(
-      ["enabled", "encryptedAtRest", "keyHint"].sort(),
+      ["enabled", "model", "providerId"].sort(),
     );
   });
 });

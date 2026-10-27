@@ -12,7 +12,6 @@ const state = vi.hoisted(() => ({ directory: "" }));
 vi.mock("electron", () => ({ app: { isPackaged: false, getPath: () => state.directory }, shell: { openExternal: vi.fn() }, safeStorage: { isEncryptionAvailable: () => false } }));
 import { SessionController } from "../electron/main/session.js";
 import { WriterService } from "../writer/index.js";
-import * as writerKeys from "../electron/main/writer-key.js";
 import { boundedDisplayText } from "../electron/main/live-agent.js";
 class Client extends EventEmitter {
   startThread = vi.fn(async () => "thread");
@@ -142,8 +141,8 @@ it("waits for an in-flight Undo before starting a user-requested turn with its r
 });
 it("does not publish a late writer result with pre-Undo facts", async () => {
   const f = await fixture();
-  vi.spyOn(writerKeys, "loadWriterKey").mockReturnValue("fixture-placeholder");
-  let finish!: (value: never) => void;
+    let finish!: (value: never) => void;
+  f.session.setWriterConfig({ providerId: "openai", model: "gpt-test", apiKey: "sk-test" });
   const compose = vi.spyOn(WriterService.prototype, "composeReply").mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
   f.client.emit("turn/completed", { threadId: "thread", turn: { id: "turn", status: "completed" } });
   await flush(); expect(compose).toHaveBeenCalledOnce();
@@ -196,8 +195,8 @@ it.each([true, false])("gives the reply writer the verified Undo state, success=
   const f = await fixture();
   f.undo.mockResolvedValue({ ok, output: ok ? "Restored report.txt" : "Restored one item; destination occupied: report.txt" });
   await f.session.undo(f.entryId);
-  vi.spyOn(writerKeys, "loadWriterKey").mockReturnValue("fixture-placeholder");
-  const compose = vi.spyOn(WriterService.prototype, "composeReply").mockResolvedValue({ text: "Fixture reply", used: true });
+  f.session.setWriterConfig({ providerId: "openai", model: "gpt-test", apiKey: "sk-test" });
+    const compose = vi.spyOn(WriterService.prototype, "composeReply").mockResolvedValue({ text: "Fixture reply", used: true });
   f.client.emit("turn/completed", { threadId: "thread", turn: { id: "turn", status: "completed" } });
   await flush();
   expect(compose).toHaveBeenCalledOnce();
@@ -217,8 +216,8 @@ it("includes an earlier task's failed Undo in the current writer facts", async (
   (f.session as unknown as { live: EventEmitter }).live.emit("activity", { summary: "Moved next-report.txt", undoable: true, actionId: "journal-2" });
   f.undo.mockResolvedValue({ ok: false, output: "One item restored; report.txt still needs recovery." });
   await f.session.undo(f.entryId);
-  vi.spyOn(writerKeys, "loadWriterKey").mockReturnValue("fixture-placeholder");
-  const compose = vi.spyOn(WriterService.prototype, "composeReply").mockResolvedValue({ text: "Fixture reply", used: true });
+  f.session.setWriterConfig({ providerId: "openai", model: "gpt-test", apiKey: "sk-test" });
+    const compose = vi.spyOn(WriterService.prototype, "composeReply").mockResolvedValue({ text: "Fixture reply", used: true });
   f.client.emit("turn/completed", { threadId: "thread", turn: { id: "turn-2", status: "completed" } });
   await flush();
   const facts = compose.mock.calls[0][0];
@@ -258,8 +257,8 @@ it.each([0, 2])("carries structured restore counts to the model and writer, rest
   expect(response).toContain(`\\"restored\\":${restored}`);
   expect(response).toContain('\\"total\\":3');
   expect(f.session.getSnapshot().activity[0].undoResult).toMatchObject({ status: "failed", restored, total: 3 });
-  vi.spyOn(writerKeys, "loadWriterKey").mockReturnValue("fixture-placeholder");
-  const compose = vi.spyOn(WriterService.prototype, "composeReply").mockResolvedValue({ text: "Fixture reply", used: true });
+  f.session.setWriterConfig({ providerId: "openai", model: "gpt-test", apiKey: "sk-test" });
+    const compose = vi.spyOn(WriterService.prototype, "composeReply").mockResolvedValue({ text: "Fixture reply", used: true });
   f.client.emit("turn/completed", { threadId: "thread", turn: { id: "turn", status: "completed" } }); await flush();
   expect(compose.mock.calls[0][0].actions[0].summary).toContain(restored ? "Partly restored (2 of 3)" : "Undo failed");
 });
@@ -271,8 +270,8 @@ it("does not cut a recovery path in the model result or the writer error hint", 
   f.undo.mockResolvedValue({ ok: false, output }); await f.session.undo(f.entryId);
   f.client.emit("serverRequest", { id: 50, method: "item/tool/call", params: { tool: "lalime_click", arguments: { name: "Delete", windowTitle: "Editor" } } }); await flush();
   expect(JSON.stringify(f.client.respondToolCall.mock.calls)).toContain("old-copy.tmp");
-  vi.spyOn(writerKeys, "loadWriterKey").mockReturnValue("fixture-placeholder");
-  const compose = vi.spyOn(WriterService.prototype, "composeReply").mockResolvedValue({ text: "Fixture reply", used: true });
+  f.session.setWriterConfig({ providerId: "openai", model: "gpt-test", apiKey: "sk-test" });
+    const compose = vi.spyOn(WriterService.prototype, "composeReply").mockResolvedValue({ text: "Fixture reply", used: true });
   f.client.emit("turn/completed", { threadId: "thread", turn: { id: "turn", status: "completed" } }); await flush();
   const hint = compose.mock.calls[0][0].errors![0].plainHint;
   expect(hint.includes(recoveryPath) || (!hint.includes("C:") && /details/i.test(hint))).toBe(true);
@@ -295,8 +294,8 @@ it("does not truncate a file path in the writer's qualified Undo summary", async
   const selected = f.session.getSnapshot().activity[0].id;
   f.undo.mockResolvedValue({ ok: false, output: "A newer file was left alone.", restoreProgress: { restored: 1, total: 2 } } as never);
   await f.session.undo(selected);
-  vi.spyOn(writerKeys, "loadWriterKey").mockReturnValue("fixture-placeholder");
-  const compose = vi.spyOn(WriterService.prototype, "composeReply").mockResolvedValue({ text: "Fixture reply", used: true });
+  f.session.setWriterConfig({ providerId: "openai", model: "gpt-test", apiKey: "sk-test" });
+    const compose = vi.spyOn(WriterService.prototype, "composeReply").mockResolvedValue({ text: "Fixture reply", used: true });
   f.client.emit("turn/completed", { threadId: "thread", turn: { id: "turn", status: "completed" } }); await flush();
   const summary = compose.mock.calls[0][0].actions[0].summary;
   expect(summary).toContain("Partly restored (1 of 2)");
@@ -330,8 +329,8 @@ it("reports a real NodeHands partial restore consistently to the snapshot, model
   expect(modelText).toContain('"outcome":"partly_restored"');
   expect(modelText).toContain('"restored":2,"total":3');
   expect(modelText).not.toContain("EEXIST");
-  vi.spyOn(writerKeys, "loadWriterKey").mockReturnValue("fixture-placeholder");
-  const compose = vi.spyOn(WriterService.prototype, "composeReply").mockResolvedValue({ text: "Fixture reply", used: true });
+  f.session.setWriterConfig({ providerId: "openai", model: "gpt-test", apiKey: "sk-test" });
+    const compose = vi.spyOn(WriterService.prototype, "composeReply").mockResolvedValue({ text: "Fixture reply", used: true });
   f.client.emit("turn/completed", { threadId: "thread", turn: { id: "turn", status: "completed" } }); await flush();
   expect(compose.mock.calls[0][0]).toMatchObject({ outcome: "partly_done", actions: [expect.objectContaining({ summary: "Partly restored (2 of 3): Moved three files" }), expect.anything()] });
   expect(JSON.stringify(compose.mock.calls[0][0].errors)).not.toContain("EEXIST");
@@ -343,8 +342,8 @@ it("builds a useful writer hint from structured item issues instead of long reco
   f.undo.mockResolvedValue({ ok: false, output: "Full recovery details " + items[0].recoveryPath, restoreProgress: { restored: 1, total: 3 }, undoItems: items } as never);
   await f.session.undo(f.entryId);
   expect(f.session.getSnapshot().activity[0].undoResult).toMatchObject({ items });
-  vi.spyOn(writerKeys, "loadWriterKey").mockReturnValue("fixture-placeholder");
-  const compose = vi.spyOn(WriterService.prototype, "composeReply").mockResolvedValue({ text: "Fixture reply", used: true });
+  f.session.setWriterConfig({ providerId: "openai", model: "gpt-test", apiKey: "sk-test" });
+    const compose = vi.spyOn(WriterService.prototype, "composeReply").mockResolvedValue({ text: "Fixture reply", used: true });
   f.client.emit("turn/completed", { threadId: "thread", turn: { id: "turn", status: "completed" } }); await flush();
   const hint = compose.mock.calls[0][0].errors![0].plainHint;
   expect(hint).toContain("f1.tmp"); expect(hint).toContain("newer file");
@@ -362,8 +361,8 @@ it("reports all restored files with a metadata warning to the snapshot, model, a
   f.client.emit("serverRequest", { id: 80, method: "item/tool/call", params: { tool: "lalime_click", arguments: { name: "Delete", windowTitle: "Editor" } } }); await flush();
   const model = f.client.respondToolCall.mock.calls[0][1].contentItems.at(-1).text as string;
   expect(model).toContain('"outcome":"restored"'); expect(model).toContain(warning);
-  vi.spyOn(writerKeys, "loadWriterKey").mockReturnValue("fixture-placeholder");
-  const compose = vi.spyOn(WriterService.prototype, "composeReply").mockResolvedValue({ text: "Fixture reply", used: true });
+  f.session.setWriterConfig({ providerId: "openai", model: "gpt-test", apiKey: "sk-test" });
+    const compose = vi.spyOn(WriterService.prototype, "composeReply").mockResolvedValue({ text: "Fixture reply", used: true });
   f.client.emit("turn/completed", { threadId: "thread", turn: { id: "turn", status: "completed" } }); await flush();
   expect(compose.mock.calls[0][0].errors).toContainEqual({ code: "UNDO_WARNING", plainHint: warning });
   expect(compose.mock.calls[0][0].actions[0]).toMatchObject({ status: "skipped", undoable: false });

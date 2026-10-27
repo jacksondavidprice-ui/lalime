@@ -15,7 +15,7 @@ describe("committed static copy", () => {
   });
 
   it("exposes rewritten strings without needing a runtime key", () => {
-    expect(t("settings.writerHeading")).toMatch(/Better writing/i);
+    expect(t("settings.writerHeading")).toMatch(/Clearer replies/i);
     expect(t("chips.downloads")).toMatch(/Downloads/i);
     expect(t("empty.body")).not.toMatch(/lorem/i);
   });

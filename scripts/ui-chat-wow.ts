@@ -14,7 +14,7 @@ const snapshot: AppSnapshot = {
   activity: [{ id: "act", at: 2, summary: "Read the sample folder", undoable: false }],
   pendingApproval: null, blockedNotice: null, running: false, stopped: false,
   statusText: "Looking at the sample folder", hands: { backend: "node", available: true },
-  writer: { enabled: false, keyHint: null },
+  writer: { enabled: false, providerId: null, model: null },
 };
 
 async function fixture(browser: Browser, speech = true): Promise<Page> {

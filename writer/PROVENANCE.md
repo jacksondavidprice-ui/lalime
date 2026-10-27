@@ -23,7 +23,7 @@ Secret scan of this folder (sk-ant / sk- / AIza / ghp_ / xox / PEM patterns): no
   - `src/claude.mjs` – the Claude client wrapper (subscription CLI only; it deletes ANTHROPIC_API_KEY on purpose).
   - `scripts/writing-model-adapter.mjs` – audited provider adapter (hash-chained audit log).
 - `apps/aibutamazing/` – how the live chat site embeds Deliberate.
-  - `src/smart-provider.ts` – direct Anthropic Messages API call with controlled per-HTTP-status error text. Best starting point for Lalime's BYO-key client.
+  - `src/smart-provider.ts` – direct Anthropic Messages API call with controlled per-HTTP-status error text. Informed Lalime's earlier Anthropic-only writer client; the live path now reuses the user's selected provider via `writer/llm-client.ts`.
   - `prompts/anti-slop.md` – "Write direct prose" policy.
   - `docs/deliberate-main-chat.md`, `src/deliberate-chat.ts` – chat ↔ Deliberate bridge.
 - `plugins/claude-clear-explanations/` – audience-aware explanation layer (finished product per repo README).

@@ -75,12 +75,13 @@ Pick one:
   ```
   npm i -g @openai/codex
   ```
+  A terminal `codex login` does not connect Lalime — sign in from inside the app.
 - **Your own provider API key.** Add it in **Settings**. Supported: OpenAI, Anthropic, Gemini, Groq, Mistral, DeepSeek, OpenRouter, xAI, Together AI, Fireworks AI, and Cerebras.
 - **A local model.** Use Ollama or any custom endpoint.
 
 Model IDs are editable, so when a provider ships a new model you don't have to wait for me to update anything.
 
-**Optional: better writing.** If you paste in your own Anthropic API key, a writing layer (Deliberate) rewrites the assistant's replies so they read more naturally. Without a key, you just get the model's text unchanged.
+**Clearer replies.** When you connect an API provider (or local model) in Settings, a light writing layer (Deliberate Lite) can rewrite the assistant's replies in clearer everyday English using that same model. No separate writing key. If you have not connected a provider, or the rewrite fails, you just get the regular reply text unchanged.
 
 Provider details: [docs/PROVIDERS.md](docs/PROVIDERS.md)
 

@@ -10,11 +10,11 @@ Required by the 2026 CAC rules: AI use must be fully disclosed, and AI must not 
 | Playwright | UI screenshots and smoke tests |
 | OpenAI Codex app-server (runtime) | Live agent turns when the user signs in with their ChatGPT account or their own API key |
 | OpenAI developer docs (app-server, auth, dynamic tools) | Verified protocol for approvals + `item/tool/call` |
-| Claude Opus 5.5 (`claude-opus-5-5`) via Anthropic Messages API | Optional Deliberate Lite writing layer (user’s own Anthropic key) that rewrites the reply the person reads after Codex finishes a turn |
+| User-selected provider/model (OpenAI-compatible or Anthropic Messages) | Optional Deliberate Lite writing layer that rewrites the reply the person reads after a live turn finishes |
 
 ## Writing layer (Deliberate)
 
-Lalime’s message-writing layer uses Jackson’s own **Deliberate** rules from his `aibutgood` / Deliberate project (2026), running on Claude Opus 5.5 with the user’s bring-your-own Anthropic key. Codex still performs all actions; Deliberate only writes what the person sees from a factual summary. Without a key, or on error/timeout, the app shows Codex’s own text unchanged. Author-voice preset files from Deliberate were not ported (they contain copyrighted excerpts).
+Lalime’s message-writing layer uses Jackson’s own **Deliberate** rules from his `aibutgood` / Deliberate project (2026). It runs a single lightweight rewrite (plus local safe fixes) on the same provider and model the user already connected in Settings. The live agent still performs all actions; Deliberate only writes what the person sees from a factual summary. Without a connected API provider, or on error/timeout/abort, the app shows the agent’s own text unchanged. Author-voice preset files from Deliberate were not ported (they contain copyrighted excerpts).
 
 ## What AI did **not** solely invent as the “student contribution”
 

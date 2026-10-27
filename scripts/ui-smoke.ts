@@ -25,7 +25,7 @@ function snapshot(populated = false): AppSnapshot {
       undoable: true, actionId: "review" }] : [],
     pendingApproval: null, blockedNotice: null, running: false, stopped: false,
     statusText: "Ready when you are.", hands: { backend: "node", available: true },
-    writer: { enabled: false, keyHint: null },
+    writer: { enabled: false, providerId: null, model: null },
   };
 }
 
@@ -39,9 +39,7 @@ async function fixturePage(browser: Browser, mobile = false, populated = false, 
       async setMode() {}, async signInDemo() {}, async signInChatgpt() { return { ok: true }; },
       async signInApiKey() { return { ok: true }; }, async sendMessage() {}, async respondApproval() {},
       async undo() {}, async stop() {}, async dismissBlocked() {}, async runDemoScenario() {},
-      async writerSetKey() { return { ok: true }; }, async writerClearKey() {},
-      async writerStatus() { return state.writer; }, async writerCheckKey() { return { ok: true }; },
-      async updateSettings() { return { ok: true }; }, async connectProvider() { return { ok: true }; }, async disconnect() {},
+      async writerStatus() { return state.writer; }, async updateSettings() { return { ok: true }; }, async connectProvider() { return { ok: true }; }, async disconnect() {},
       async copyText() {},
     };
     Object.defineProperty(window, "lalime", { value: api });

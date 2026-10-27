@@ -24,15 +24,14 @@ vi.mock("../electron/main/codex-client.js", () => ({ CodexAppServerClient: class
 import { SessionController } from "../electron/main/session.js";
 import { MockHands } from "../hands/mock/index.js";
 import { WriterService } from "../writer/index.js";
-import * as writerKeys from "../electron/main/writer-key.js";
 
 beforeEach(() => { state.directory = mkdtempSync(path.join(os.tmpdir(), "lime-lifecycle-")); state.clients = []; state.deferredStart = null; });
 afterEach(() => { vi.restoreAllMocks(); rmSync(state.directory, { recursive: true, force: true }); });
 describe("session authentication and cancellation", () => {
   it("does not present earlier actions as work done in a new turn", async () => {
-    vi.spyOn(writerKeys, "loadWriterKey").mockReturnValue("sk-ant-test");
     const compose = vi.spyOn(WriterService.prototype, "composeReply").mockResolvedValue({ text: "Reply", source: "fallback" });
     const session = new SessionController(new MockHands());
+    session.setWriterConfig({ providerId: "openai", model: "gpt-test", apiKey: "sk-test" });
     await session.signInChatgpt();
     const client = state.clients[0];
     session.attachLiveClient(client);

@@ -32,10 +32,7 @@ const api: LalimeApi = {
   stop: () => ipcRenderer.invoke(IPC.stop),
   dismissBlocked: () => ipcRenderer.invoke(IPC.dismissBlocked),
   runDemoScenario: (id: DemoScenarioId) => ipcRenderer.invoke(IPC.runDemoScenario, id),
-  writerSetKey: (key: string) => ipcRenderer.invoke(IPC.writerSetKey, key),
-  writerClearKey: () => ipcRenderer.invoke(IPC.writerClearKey),
   writerStatus: () => ipcRenderer.invoke(IPC.writerStatus),
-  writerCheckKey: () => ipcRenderer.invoke(IPC.writerCheckKey),
 };
 
 contextBridge.exposeInMainWorld("lalime", api);

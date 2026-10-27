@@ -27,6 +27,10 @@ Ollama runs on this computer. Install a suitable model separately. Local models 
 
 Official provider URLs cannot be changed. To use a proxy, select the custom connection explicitly. URLs must use HTTPS, except HTTP on `localhost`, `127.0.0.1`, or `::1`. URLs cannot contain credentials, query parameters, or fragments. HTTP redirects are rejected. Do not enter a provider key into an endpoint that you do not trust.
 
+## Clearer replies (Deliberate Lite)
+
+After a live turn finishes, Lalime can run one lightweight rewrite of the reply the person reads. That rewrite uses the same connected provider, model, and in-memory API key as the live agent. There is no separate writing key. ChatGPT / Codex sign-in alone does not enable the rewrite (there is no standalone completion route on that path), so those sessions keep the agent’s own text. If the rewrite fails, times out, or is aborted, the original reply is shown unchanged.
+
 ## Agent limits and behavior
 
 - Requests run in the Electron main process. Credentials are not added to prompts, logs, or provider error messages.

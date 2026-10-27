@@ -13,7 +13,7 @@ const state: AppSnapshot = {
     role: i % 2 ? "assistant" : "user", content: `Sample ${i}. ${SAMPLE.repeat(2)}`, createdAt: i })),
   plan: [], activity: [], pendingApproval: null, blockedNotice: null, running: false,
   stopped: false, statusText: "Synthetic browser test", hands: { backend: "node", available: true },
-  writer: { enabled: false, keyHint: null },
+  writer: { enabled: false, providerId: null, model: null },
 };
 
 async function fixture(browser: Browser): Promise<Page> {
@@ -31,9 +31,7 @@ async function fixture(browser: Browser): Promise<Page> {
       async signInChatgpt() { return { ok: true }; }, async signInApiKey() { return { ok: true }; },
       async sendMessage() {}, async respondApproval() {}, async undo() {}, async stop() {},
       async dismissBlocked() {}, async runDemoScenario() {},
-      async writerSetKey() { return { ok: true }; }, async writerClearKey() {},
-      async writerStatus() { return current.writer; }, async writerCheckKey() { return { ok: true }; },
-      async updateSettings() { return { ok: true }; }, async connectProvider() { return { ok: true }; }, async disconnect() {},
+      async writerStatus() { return current.writer; }, async updateSettings() { return { ok: true }; }, async connectProvider() { return { ok: true }; }, async disconnect() {},
       async copyText(text) { if (rejectCopy) throw new Error("Synthetic copy failure"); copiedText = text; },
     };
     Object.defineProperty(window, "lalime", { value: api });

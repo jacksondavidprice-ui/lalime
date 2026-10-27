@@ -47,14 +47,6 @@
     "intent": "Credentials explanation",
     "facts": ["ChatGPT or OpenAI key", "never ships shared login"]
   },
-  "onboarding.writer.title": {
-    "intent": "Optional clearer writing with Anthropic",
-    "facts": ["optional", "Anthropic key", "falls back without it"]
-  },
-  "onboarding.writer.body": {
-    "intent": "Explain BYO Anthropic key for Deliberate writing",
-    "facts": ["optional", "sk-ant-", "stored on this PC only", "works without it"]
-  },
   "settings.signInHeading": {
     "intent": "Settings heading for sign-in",
     "facts": []
@@ -64,28 +56,12 @@
     "facts": ["own ChatGPT or OpenAI key", "no shared login"]
   },
   "settings.writerHeading": {
-    "intent": "Settings heading for optional writing",
-    "facts": ["optional"]
+    "intent": "Settings heading for clearer replies",
+    "facts": []
   },
   "settings.writerBlurb": {
-    "intent": "One sentence on better writing",
-    "facts": ["Anthropic key", "clearer replies", "Codex still does the work"]
-  },
-  "settings.writerPlaceholder": {
-    "intent": "Placeholder for Anthropic key field",
-    "facts": ["sk-ant-"]
-  },
-  "settings.writerSaved": {
-    "intent": "Confirm key saved without showing the key",
-    "facts": ["saved on this PC", "hint only"]
-  },
-  "settings.writerRemoved": {
-    "intent": "Confirm key removed",
-    "facts": []
-  },
-  "settings.writerCheckOk": {
-    "intent": "Key validated",
-    "facts": []
+    "intent": "Explain that Deliberate Lite uses the selected provider model",
+    "facts": ["same connected model", "no separate writing key", "falls back without a provider"]
   },
   "empty.title": {
     "intent": "Empty chat prompt",

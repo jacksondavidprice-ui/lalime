@@ -24,25 +24,16 @@ const slides = [
     title: t("onboarding.signin.title"),
     body: t("onboarding.signin.body"),
   },
-  {
-    id: "writer",
-    eyebrow: "Optional",
-    title: t("onboarding.writer.title"),
-    body: t("onboarding.writer.body"),
-  },
 ] as const;
 
 export function Onboarding() {
   const [index, setIndex] = useState(0);
   const [apiKey, setApiKey] = useState("");
-  const [anthropicKey, setAnthropicKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [authMsg, setAuthMsg] = useState<string | null>(null);
-  const [writerMsg, setWriterMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const slide = slides[index];
   const signInSlide = slide.id === "start";
-  const writerSlide = slide.id === "writer";
   const last = index === slides.length - 1;
 
   async function finishWithChatgpt(): Promise<void> {
@@ -57,7 +48,7 @@ export function Onboarding() {
         );
         return;
       }
-      setIndex((i) => Math.min(i + 1, slides.length - 1));
+      await getApi().completeOnboarding();
     } finally {
       setBusy(false);
     }
@@ -72,32 +63,6 @@ export function Onboarding() {
         setAuthMsg(r.message ?? t("signin.apiError"));
         return;
       }
-      setIndex((i) => Math.min(i + 1, slides.length - 1));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function saveWriterAndFinish(): Promise<void> {
-    setBusy(true);
-    setWriterMsg(null);
-    try {
-      if (anthropicKey.trim()) {
-        const r = await getApi().writerSetKey(anthropicKey);
-        if (!r.ok) {
-          setWriterMsg(r.message ?? "Could not save that Anthropic key. Try again.");
-          return;
-        }
-      }
-      await getApi().completeOnboarding();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function skipWriterAndFinish(): Promise<void> {
-    setBusy(true);
-    try {
       await getApi().completeOnboarding();
     } finally {
       setBusy(false);
@@ -117,7 +82,7 @@ export function Onboarding() {
           </p>
         </div>
 
-      <div className={`grid flex-1 items-center gap-12 py-8 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16 ${signInSlide || writerSlide ? "md:py-8" : "md:py-14"}`}>
+      <div className={`grid flex-1 items-center gap-12 py-8 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16 ${signInSlide ? "md:py-8" : "md:py-14"}`}>
           <div className="relative flex min-w-0 flex-col justify-center">
             <AnimatePresence mode="wait">
               <motion.div
@@ -132,10 +97,10 @@ export function Onboarding() {
                   <span className="h-px w-7 bg-lime" aria-hidden />
                   {slide.eyebrow}
                 </p>
-            <h1 className={`font-display mt-6 font-extrabold leading-[1.08] tracking-[-0.055em] text-ink ${signInSlide || writerSlide ? "text-[2.1rem] sm:text-[2.5rem] xl:text-[2.8rem]" : "text-[2.65rem] sm:text-5xl xl:text-[3.8rem]"}`}>
+            <h1 className={`font-display mt-6 font-extrabold leading-[1.08] tracking-[-0.055em] text-ink ${signInSlide ? "text-[2.1rem] sm:text-[2.5rem] xl:text-[2.8rem]" : "text-[2.65rem] sm:text-5xl xl:text-[3.8rem]"}`}>
                   {slide.title}
                 </h1>
-            <p className={`mt-5 max-w-[31rem] text-base leading-[1.8] text-muted ${signInSlide || writerSlide ? "" : "sm:text-lg"}`}>
+            <p className={`mt-5 max-w-[31rem] text-base leading-[1.8] text-muted ${signInSlide ? "" : "sm:text-lg"}`}>
                   {slide.body}
                 </p>
               </motion.div>
@@ -200,53 +165,6 @@ export function Onboarding() {
             </PrimaryButton>
               </motion.div>
             )}
-
-            {writerSlide && (
-              <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.08 }}
-                className="mt-8 flex max-w-xl flex-col gap-4"
-                data-testid="writer-onboarding"
-              >
-                <input
-                  type="password"
-                  value={anthropicKey}
-                  onChange={(e) => setAnthropicKey(e.target.value)}
-              placeholder={t("settings.writerPlaceholder")}
-              aria-label="Anthropic writing API key"
-              className="rounded-xl border border-ink/15 bg-surface px-4 py-3 text-base text-ink outline-none placeholder:text-muted focus:border-lime/60 focus:ring-2 focus:ring-lime/10"
-                  data-testid="onboarding-anthropic-key"
-                  autoComplete="off"
-                />
-                {writerMsg && (
-                  <p className="whitespace-pre-wrap text-sm text-danger" data-testid="writer-onboarding-msg">
-                    {writerMsg}
-                  </p>
-                )}
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <PrimaryButton
-                    className="px-6 py-3.5 text-base"
-                    disabled={busy}
-                    onClick={() => void saveWriterAndFinish()}
-                    data-testid="onboarding-writer-continue"
-                  >
-                    {anthropicKey.trim() ? "Save and continue" : "Continue without a key"}
-                  </PrimaryButton>
-                  {anthropicKey.trim() && (
-                    <PrimaryButton
-                      tone="ghost"
-                      className="px-6 py-3.5 text-base"
-                      disabled={busy}
-                      onClick={() => void skipWriterAndFinish()}
-                      data-testid="onboarding-writer-skip"
-                    >
-                      Skip
-                    </PrimaryButton>
-                  )}
-                </div>
-              </motion.div>
-            )}
             <div className="relative mt-10 flex items-center justify-between gap-4 border-t border-ink/10 pt-6 sm:mt-12">
               <div className="flex gap-2" aria-hidden>
                 {slides.map((s, i) => (
@@ -259,12 +177,12 @@ export function Onboarding() {
                 ))}
               </div>
               <div className="flex gap-2">
-                {index > 0 && !writerSlide && (
+                {index > 0 && (
                   <PrimaryButton tone="ghost" onClick={() => setIndex((i) => i - 1)}>
                     Back
                   </PrimaryButton>
                 )}
-                {!signInSlide && !writerSlide && !last && (
+                {!signInSlide && !last && (
                   <PrimaryButton
                     className="px-6"
                     onClick={() => setIndex((i) => i + 1)}
@@ -290,7 +208,7 @@ export function Onboarding() {
               <span className="h-1.5 w-1.5 rounded-full bg-lime" />
               Lalime
             </div>
-            <div className="absolute right-7 top-7 font-mono text-[10px] tracking-widest text-ink/25">0{index + 1} / 04</div>
+            <div className="absolute right-7 top-7 font-mono text-[10px] tracking-widest text-ink/25">0{index + 1} / 0{slides.length}</div>
             <div className="absolute h-[66%] w-[75%] rounded-full border border-lime/10" />
             <div className="absolute h-[46%] w-[52%] rounded-full border border-lime/20" />
             <div className="absolute h-52 w-52 rounded-full bg-lime/10 blur-[65px]" />

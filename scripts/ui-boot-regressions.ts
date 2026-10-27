@@ -19,7 +19,7 @@ async function fixture(browser: Browser, reducedMotion: "reduce" | "no-preferenc
       mode: "live", auth: { state: "signed_out" }, onboardingComplete: false,
       messages: [], plan: [], activity: [], pendingApproval: null, blockedNotice: null,
       running: false, stopped: false, statusText: "Ready", hands: { backend: "node", available: true },
-      writer: { enabled: false, keyHint: null },
+      writer: { enabled: false, providerId: null, model: null },
     }) });
   });
   await page.goto(base, { waitUntil: "domcontentloaded", timeout: 15000 });

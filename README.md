@@ -6,6 +6,8 @@ A free, open-source Windows desktop app that fixes PC problems for you. You tell
 
 Made by Jackson Price. Congressional App Challenge 2026 (solo), TX-37.
 
+**Download:** [Lalime-Setup-0.1.0.exe for Windows 10/11](https://github.com/jacksondavidprice-ui/lalime/releases/tag/v0.1.0-cac) · install guide in [download/](download/)
+
 ---
 
 ## Why I built this

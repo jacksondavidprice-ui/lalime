@@ -15,7 +15,6 @@ const packagedExecutable = packagedArgument?.slice("--packaged-executable=".leng
 const corruptSettings = process.argv.includes("--corrupt-settings");
 if (corruptSettings) {
   writeFileSync(path.join(profile, "settings.json"), '{"allowComputerControl":true,');
-  writeFileSync(path.join(profile, "anthropic-key.bin"), "invalid-encrypted-test-data");
 }
 const entry = path.join(profile, "bootstrap.cjs");
 const main = pathToFileURL(path.join(root, "dist-electron/electron/main/index.js")).href;

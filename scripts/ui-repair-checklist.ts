@@ -28,7 +28,7 @@ const initial = {
   activity: [], pendingApproval: null, pendingApprovalCount: 0, blockedNotice: null,
   running: false, stopped: false, statusText: "Ready", settings: DEFAULT_SETTINGS,
   connection: { state: "ready", model: "test-model" },
-  hands: { backend: "node", available: true }, writer: { enabled: false, keyHint: null },
+  hands: { backend: "node", available: true }, writer: { enabled: false, providerId: null, model: null },
 };
 await mkdir("artifacts/screenshots", { recursive: true });
 const browser = await chromium.launch({ headless: true, channel: process.env.LALIME_BROWSER_CHANNEL ?? "msedge" });

@@ -10,7 +10,7 @@ const initial = {
   mode: "live", auth: { state: "signed_in", method: "chatgpt" }, onboardingComplete: true,
   messages: [], plan: [], activity: [], pendingApproval: null, pendingApprovalCount: 0,
   blockedNotice: null, running: false, stopped: false, statusText: "Ready",
-  hands: { backend: "node", available: true }, writer: { enabled: false, keyHint: null },
+  hands: { backend: "node", available: true }, writer: { enabled: false, providerId: null, model: null },
   settings: { ...DEFAULT_SETTINGS, maxToolCalls: 37, requestTimeoutMs: 60000, model: "sample-model" }, connection: ready,
 };
 const browser = await chromium.launch({ headless: true, channel: process.env.LALIME_BROWSER_CHANNEL ?? "msedge" });

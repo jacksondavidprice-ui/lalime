@@ -22,7 +22,7 @@ const state: AppSnapshot = {
   mode: "live", auth: { state: "signed_in", method: "chatgpt" }, onboardingComplete: true,
   messages: [], plan: [], activity: [], pendingApproval: pending, blockedNotice: null,
   running: true, stopped: false, statusText: "Waiting for your OK",
-  hands: { backend: "node", available: true }, writer: { enabled: false, keyHint: null },
+  hands: { backend: "node", available: true }, writer: { enabled: false, providerId: null, model: null },
 };
 type Harness = { holds: string[]; refuse: boolean; holdAllowed: boolean; calls: string[]; publish(patch: Partial<AppSnapshot>): void; fail: boolean };
 async function fixture(browser: Browser, patch: Partial<AppSnapshot> = {}, reduced = false) {
@@ -44,8 +44,8 @@ async function fixture(browser: Browser, patch: Partial<AppSnapshot> = {}, reduc
       async revokeTaskGrant(id) { harness.calls.push(`revoke:${id}`); harness.publish({taskGrants:[]}); return true; },
       async undo() {}, async stop() { harness.calls.push("stop"); harness.publish({ stopped: true, running: false, pendingApproval: null, statusText: "Stopped" }); },
       async dismissBlocked() { harness.calls.push("dismiss"); harness.publish({ blockedNotice: null }); }, async runDemoScenario() {},
-      async writerSetKey() { return { ok: true }; }, async writerClearKey() {}, async writerStatus() { return current.writer; },
-      async writerCheckKey() { return { ok: true }; }, async updateSettings() { return { ok: true }; },
+      async writerStatus() { return current.writer; },
+      async updateSettings() { return { ok: true }; },
       async connectProvider() { return { ok: true }; }, async disconnect() {}, async copyText() {},
     };
     Object.defineProperty(window, "lalime", { value: api });

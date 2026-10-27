@@ -5,7 +5,6 @@ import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({ directory: "" }));
 vi.mock("electron", () => ({ app: { isPackaged: false, getPath: () => state.directory }, shell: {}, safeStorage: { isEncryptionAvailable: () => false } }));
-vi.mock("../electron/main/writer-key.js", () => ({ loadWriterKey: () => undefined, describeWriter: () => ({ enabled: false }), setWriterLastError: vi.fn() }));
 import { SessionController } from "../electron/main/session.js";
 import { MockHands } from "../hands/mock/index.js";
 class Client extends EventEmitter {

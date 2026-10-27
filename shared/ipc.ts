@@ -29,10 +29,7 @@ export const IPC = {
   stop: "lalime:stop",
   dismissBlocked: "lalime:dismissBlocked",
   runDemoScenario: "lalime:runDemoScenario",
-  writerSetKey: "lalime:writerSetKey",
-  writerClearKey: "lalime:writerClearKey",
   writerStatus: "lalime:writerStatus",
-  writerCheckKey: "lalime:writerCheckKey",
   updateSettings: "lalime:updateSettings",
   connectProvider: "lalime:connectProvider",
   retryConnectionCheck: "lalime:retryConnectionCheck",
@@ -72,15 +69,12 @@ export interface LalimeApi {
   stop: () => Promise<void>;
   dismissBlocked: () => Promise<void>;
   runDemoScenario: (id: DemoScenarioId) => Promise<void>;
-  writerSetKey: (key: string) => Promise<{ ok: boolean; message?: string }>;
-  writerClearKey: () => Promise<void>;
   writerStatus: () => Promise<{
     enabled: boolean;
-    keyHint: string | null;
-    encryptedAtRest?: boolean;
+    providerId?: string | null;
+    model?: string | null;
     lastError?: string;
   }>;
-  writerCheckKey: () => Promise<{ ok: boolean; message?: string }>;
 }
 
 export type {

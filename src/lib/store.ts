@@ -17,7 +17,7 @@ const empty: AppSnapshot = {
   stopped: false,
   statusText: "Starting…",
   hands: { backend: "node", available: true },
-  writer: { enabled: false, keyHint: null },
+  writer: { enabled: false, providerId: null, model: null },
 };
 
 interface AppState extends AppSnapshot {

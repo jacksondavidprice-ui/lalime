@@ -22,7 +22,6 @@ vi.mock("../guardian/src/index.js", () => ({
 }));
 import { SessionController } from "../electron/main/session.js";
 import { WriterService } from "../writer/index.js";
-import * as writerKeys from "../electron/main/writer-key.js";
 
 class Client extends EventEmitter {
   startThread = vi.fn(async () => "thread");
@@ -89,7 +88,7 @@ describe("late completed changes remain recoverable", () => {
     await flush();
     expect(f.session.getSnapshot().activity).toHaveLength(1);
     expect(f.session.getSnapshot().activity[0]).toMatchObject({ actionId: "late-journal", undoable: true });
-    vi.spyOn(writerKeys, "loadWriterKey").mockReturnValue("sk-ant-test");
+    f.session.setWriterConfig({ providerId: "openai", model: "gpt-test", apiKey: "sk-test" });
     const compose = vi.spyOn(WriterService.prototype, "composeReply").mockResolvedValue({ text: "A monitor is a screen.", source: "fallback" });
     f.client.emit("item/completed", { threadId: "thread", turnId: "turn-2", item: { type: "agentMessage", text: "A monitor is a screen." } });
     f.client.emit("turn/completed", { threadId: "thread", turn: { id: "turn-2", status: "completed" } });

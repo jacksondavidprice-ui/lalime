@@ -14,7 +14,7 @@ const initial: AppSnapshot = {
     { id: "old", at: 20, summary: "Earlier sample change", actionId: "old-act", undoable: true }],
   taskGrants: [{ id: "grant1", kind: "ui_click", target: "Sample app > Exact button" }],
   pendingApproval: null, blockedNotice: null, running: false, stopped: false, statusText: "Ready",
-  hands: { backend: "node", available: true }, writer: { enabled: false, keyHint: null },
+  hands: { backend: "node", available: true }, writer: { enabled: false, providerId: null, model: null },
 };
 type Harness = { publish(patch: Partial<AppSnapshot>): void; behavior(mode: string): void; undoCalls(): string[]; revokeCalls(): string[]; finish(): void };
 const browser = await chromium.launch({ headless: true, channel: process.env.LALIME_BROWSER_CHANNEL || undefined });

@@ -11,7 +11,7 @@ from the application frame. The bridge exposes no clipboard read operation.
 
 ## Accounts and keys
 
-Primary API keys stay in memory until disconnect or exit. Settings never include a key. The optional Anthropic writer uses Electron `safeStorage` when encryption is available, and otherwise keeps a new key in memory. If encryption becomes unavailable, existing encrypted bytes are not interpreted as plaintext.
+Primary API keys stay in memory until disconnect or exit. Settings never include a key. Deliberate Lite reuses the same in-memory provider credentials as the live agent; it does not store a separate writing key.
 
 Codex runs with an app-owned `CODEX_HOME`. Lalime does not copy another Codex account store or configuration, and it excludes inherited OpenAI API credential environment variables from that child process. Codex manages its own authentication persistence. Disconnect ends the active client; it does not revoke the provider account or erase Codex's saved login. Use the provider's account controls to revoke access.
 

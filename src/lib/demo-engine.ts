@@ -51,7 +51,7 @@ export class DemoEngine {
     stopped: false,
     statusText: "Dev scripted fixture",
     hands: { backend: "mock", available: true },
-    writer: { enabled: false, keyHint: null },
+    writer: { enabled: false, providerId: null, model: null },
   };
 
   subscribe(cb: Listener): () => void {

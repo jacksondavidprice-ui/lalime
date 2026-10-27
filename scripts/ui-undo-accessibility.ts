@@ -16,7 +16,7 @@ const initial: AppSnapshot = {
     { id: "same-entry", at: 110, summary: "Moved sample A", undoable: true, actionId: "action-a" },
     { id: "another-entry", at: 109, summary: "Moved sample B", undoable: true, actionId: "action-b" },
   ], pendingApproval: null, pendingApprovalCount: 0, blockedNotice: null,
-  running: false, stopped: false, statusText: "Ready", hands: { backend: "node", available: true }, writer: { enabled: false, keyHint: null },
+  running: false, stopped: false, statusText: "Ready", hands: { backend: "node", available: true }, writer: { enabled: false, providerId: null, model: null },
 };
 type Harness = { publish(patch: Partial<AppSnapshot>): void; outcome(result: NonNullable<ActivityEntry["undoResult"]>): void; calls(): string[] };
 const browser = await chromium.launch({ headless: true, channel: process.env.LALIME_BROWSER_CHANNEL ?? "msedge" });

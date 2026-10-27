@@ -11,7 +11,7 @@ const initial: AppSnapshot = {
   mode: "live", auth: { state: "signed_in", method: "chatgpt" }, onboardingComplete: true,
   messages: [{ id: "u", role: "user", content: "Organize samples", createdAt: 100 }],
   plan: [], activity: [], pendingApproval: null, pendingApprovalCount: 0, blockedNotice: null,
-  running: false, stopped: false, statusText: "Ready", hands: { backend: "node", available: true }, writer: { enabled: false, keyHint: null },
+  running: false, stopped: false, statusText: "Ready", hands: { backend: "node", available: true }, writer: { enabled: false, providerId: null, model: null },
 };
 const browser = await chromium.launch({ headless: true, channel: process.env.LALIME_BROWSER_CHANNEL ?? "msedge" });
 const results: string[] = [];

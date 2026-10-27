@@ -52,6 +52,21 @@ export class ApiAgentClient extends EventEmitter {
 
   get isRunning(): boolean { return this.started; }
 
+  /** Credentials and model used for this connection (writer reuses the same config). */
+  getInferenceConfig(): {
+    providerId: string;
+    model: string;
+    apiKey?: string;
+    baseUrl: string;
+  } {
+    return {
+      providerId: this.options.providerId,
+      model: this.options.model,
+      apiKey: this.options.apiKey,
+      baseUrl: this.baseUrl,
+    };
+  }
+
   async start(): Promise<void> { this.started = true; }
 
   stop(): void {

@@ -29,6 +29,24 @@ describe("complete session over a local HTTP provider", () => {
         response.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: "OK" }, finish_reason: "stop" }] }));
         return;
       }
+      // Deliberate Lite rewrite: same endpoint, no tools, short max_tokens budget.
+      const writerBudget = parsedBody.max_tokens === 1200 || parsedBody.max_completion_tokens === 1200;
+      if (writerBudget && !parsedBody.tools) {
+        const user = String(parsedBody.messages?.find((m: { role?: string }) => m.role === "user")?.content ?? "");
+        let text = "Display settings are open.";
+        try {
+          const jsonStart = user.indexOf("{");
+          if (jsonStart >= 0) {
+            const facts = JSON.parse(user.slice(jsonStart)) as { agentConclusion?: string };
+            if (facts.agentConclusion?.trim()) text = facts.agentConclusion.trim();
+          }
+        } catch {
+          // Keep the stable fallback text.
+        }
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: text }, finish_reason: "stop" }] }));
+        return;
+      }
       requests.push(parsedBody);
       const message = requests.length === 1
         ? { role: "assistant", content: null, tool_calls: [{ id: "tool-1", type: "function", function: { name: "lalime_click", arguments: JSON.stringify({ name: "Uninstall", windowTitle: "Apps" }) } }] }

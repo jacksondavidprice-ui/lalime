@@ -142,11 +142,11 @@ export interface ApprovalQueueEntry {
 }
 
 export interface WriterStatus {
+  /** True when the connected API provider can power Deliberate Lite rewrites. */
   enabled: boolean;
-  keyHint: string | null;
-  encryptedAtRest?: boolean;
+  providerId?: string | null;
+  model?: string | null;
   lastError?: string;
-  model?: string;
 }
 
 export type AppMode = "demo" | "live";

@@ -29,11 +29,7 @@ import type {
   ProposedAction,
   UndoItemIssue,
 } from "../../shared/types.js";
-import {
-  AnthropicClient,
-  looksLikeAnthropicKey,
-} from "../../writer/anthropic-client.js";
-import { WriterService, buildFactsPacket } from "../../writer/index.js";
+import { WriterService, buildFactsPacket, type WriterLlmOptions } from "../../writer/index.js";
 import type { FactsOutcome } from "../../writer/facts.js";
 import { CodexAppServerClient } from "./codex-client.js";
 import { isScriptedMockAllowed } from "./dev-flags.js";
@@ -44,13 +40,7 @@ import { ApiAgentClient } from "./api-agent-client.js";
 import { checkCodexConnection } from "./connection-check.js";
 import type { RepairPlan } from "../../shared/repair-plan.js";
 import { getProvider, validateProviderBaseUrl } from "../../shared/providers.js";
-import {
-  clearWriterKey,
-  getWriterKeyStatus,
-  loadWriterKey,
-  saveWriterKey,
-  setWriterLastError,
-} from "./writer-key.js";
+import type { WriterStatus } from "../../shared/types.js";
 
 function id(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -92,6 +82,8 @@ export class SessionController extends EventEmitter {
   private turnBlocked: Array<{ plainEnglish: string; tier: number }> = [];
   private turnActivity: ActivityEntry[] = [];
   private writerFetch: typeof fetch | undefined;
+  private writerConfigOverride: WriterLlmOptions | null = null;
+  private writerLastError: string | undefined;
   private pendingUndos = new Set<string>();
 
   private state: AppSnapshot = {
@@ -111,7 +103,7 @@ export class SessionController extends EventEmitter {
     stopped: false,
     statusText: "Sign in to get started",
     hands: { backend: "node", available: true },
-    writer: { enabled: false, keyHint: null },
+    writer: { enabled: false, providerId: null, model: null },
   };
 
   constructor(hands?: HandsClient) {
@@ -129,17 +121,50 @@ export class SessionController extends EventEmitter {
     };
   }
 
-  /** Test helper: inject Anthropic fetch transport. */
+  /** Test helper: inject writer fetch transport. */
   setWriterFetch(fetchImpl: typeof fetch): void {
     this.writerFetch = fetchImpl;
   }
 
-  private describeWriter() {
-    try {
-      return getWriterKeyStatus();
-    } catch {
-      return { enabled: false, keyHint: null as string | null };
+  /** Test helper: force a writer config without a live ApiAgentClient. */
+  setWriterConfig(config: WriterLlmOptions | null): void {
+    this.writerConfigOverride = config;
+    this.patch({ writer: this.describeWriter() });
+  }
+
+  private resolveWriterConfig(): WriterLlmOptions | null {
+    if (this.writerConfigOverride) {
+      return {
+        ...this.writerConfigOverride,
+        fetchImpl: this.writerConfigOverride.fetchImpl ?? this.writerFetch,
+      };
     }
+    if (!this.apiClient) return null;
+    try {
+      const cfg = this.apiClient.getInferenceConfig();
+      if (!cfg.model?.trim()) return null;
+      const provider = getProvider(cfg.providerId);
+      if (provider.requiresKey && !cfg.apiKey?.trim()) return null;
+      return {
+        providerId: cfg.providerId,
+        model: cfg.model,
+        apiKey: cfg.apiKey,
+        baseUrl: cfg.baseUrl,
+        fetchImpl: this.writerFetch,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private describeWriter(): WriterStatus {
+    const cfg = this.resolveWriterConfig();
+    return {
+      enabled: Boolean(cfg),
+      providerId: cfg?.providerId ?? null,
+      model: cfg?.model ?? null,
+      ...(this.writerLastError ? { lastError: this.writerLastError } : {}),
+    };
   }
 
   writerStatus() {
@@ -148,31 +173,8 @@ export class SessionController extends EventEmitter {
     return status;
   }
 
-  writerSetKey(key: string) {
-    const result = saveWriterKey(key);
-    this.patch({ writer: result.status });
-    return { ok: result.ok, message: result.message };
-  }
-
-  writerClearKey(): void {
-    const status = clearWriterKey();
-    this.patch({ writer: status });
-  }
-
-  async writerCheckKey(): Promise<{ ok: boolean; message?: string }> {
-    const key = loadWriterKey();
-    if (!key || !looksLikeAnthropicKey(key)) {
-      return { ok: false, message: "Add an Anthropic key that starts with sk-ant- first." };
-    }
-    const client = new AnthropicClient({
-      apiKey: key,
-      fetchImpl: this.writerFetch,
-    });
-    const result = await client.validateKey();
-    if (!result.ok) setWriterLastError(result.message);
-    else setWriterLastError(undefined);
-    this.patch({ writer: this.describeWriter() });
-    return result;
+  private setWriterLastError(message?: string): void {
+    this.writerLastError = message;
   }
 
   private describeHands(): HandsStatus {
@@ -240,6 +242,7 @@ export class SessionController extends EventEmitter {
     this.apiClient = null;
     this.state.connection = undefined;
     this.state.repairPlan = undefined;
+    this.state.writer = this.describeWriter();
   }
 
   disconnect(): void {
@@ -260,7 +263,16 @@ export class SessionController extends EventEmitter {
       await client.start();
       if (generation !== this.generation) return { ok: false, message: "Connection cancelled." };
       const provider = getProvider(settings.providerId);
-      this.patch({ mode: "live", auth: { state: "signed_in", method: provider.id === "ollama" ? "local" : "api_key", providerId: provider.id }, messages: [], activity: [], plan: [], stopped: false, statusText: "Checking model access" });
+      this.patch({
+        mode: "live",
+        auth: { state: "signed_in", method: provider.id === "ollama" ? "local" : "api_key", providerId: provider.id },
+        messages: [],
+        activity: [],
+        plan: [],
+        stopped: false,
+        statusText: "Checking model access",
+        writer: this.describeWriter(),
+      });
       return await this.retryConnectionCheck();
     } catch (error) {
       return { ok: false, message: error instanceof Error ? error.message : "Could not connect provider." };
@@ -552,12 +564,11 @@ export class SessionController extends EventEmitter {
   }
 
   private async glossApproval(pending: PendingApproval): Promise<void> {
-    const key = loadWriterKey();
-    if (!key) return;
+    const config = this.resolveWriterConfig();
+    if (!config) return;
     try {
       const writer = new WriterService({
-        apiKey: key,
-        fetchImpl: this.writerFetch,
+        ...config,
         approvalTimeoutMs: 2_500,
       });
       const target =
@@ -619,10 +630,10 @@ export class SessionController extends EventEmitter {
       agentConclusion: fallback,
     });
 
-    const key = loadWriterKey();
-    if (!key) {
+    const config = this.resolveWriterConfig();
+    if (!config) {
       this.publishAssistant(fallback);
-      this.patch({ running: false, statusText: "Done", pendingApproval: null });
+      this.patch({ running: false, statusText: "Done", pendingApproval: null, writer: this.describeWriter() });
       return;
     }
 
@@ -641,10 +652,7 @@ export class SessionController extends EventEmitter {
     });
 
     try {
-      const writer = new WriterService({
-        apiKey: key,
-        fetchImpl: this.writerFetch,
-      });
+      const writer = new WriterService(config);
       const result = await writer.composeReply(facts, {
         fallbackText: fallback,
         signal: writerSignal,
@@ -660,8 +668,8 @@ export class SessionController extends EventEmitter {
         },
       });
       if (generation !== this.generation || writerSignal?.aborted) return;
-      if (result.error) setWriterLastError(result.error);
-      else setWriterLastError(undefined);
+      if (result.error) this.setWriterLastError(result.error);
+      else this.setWriterLastError(undefined);
       this.patch({
         messages: this.state.messages.map((m) =>
           m.id === this.streamingMessageId ? { ...m, content: result.text } : m,
@@ -674,7 +682,7 @@ export class SessionController extends EventEmitter {
     } catch {
       if (generation !== this.generation || writerSignal?.aborted) return;
       this.publishAssistant(fallback);
-      this.patch({ running: false, statusText: "Done", pendingApproval: null });
+      this.patch({ running: false, statusText: "Done", pendingApproval: null, writer: this.describeWriter() });
     } finally {
       if (generation !== this.generation || writerSignal?.aborted) return;
       this.streamingMessageId = null;

@@ -46,10 +46,7 @@ export function registerIpc(session: SessionController, getWindow: () => Browser
     if (!["downloads_cleanup", "wifi_fix", "night_light", "dangerous_block"].includes(String(id))) throw new Error("Invalid fixture.");
     return session.runDemoScenario(id as DemoScenarioId);
   });
-  handle(IPC.writerSetKey, (key) => session.writerSetKey(text(key, 4096)));
-  handle(IPC.writerClearKey, () => session.writerClearKey());
   handle(IPC.writerStatus, () => session.writerStatus());
-  handle(IPC.writerCheckKey, () => session.writerCheckKey());
   handle(IPC.updateSettings, (settings) => session.updateSettings(settings));
   handle(IPC.connectProvider, (key) => session.connectProvider(key == null || key === "" ? undefined : text(key, 4096)));
   handle(IPC.retryConnectionCheck, (...args) => {

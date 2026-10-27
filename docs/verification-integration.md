@@ -11,7 +11,7 @@ Each listed regression ran before its production fix. Accepted assertions stayed
 | Command | Relevant red result (exit 1) | Green result (exit 0) |
 |---|---|---|
 | `npm test -- tests/session-settings.test.ts tests/ipc-security.test.ts` | Five failures: foreign sender accepted, invalid input accepted, no settings state or update operation | Six tests passed |
-| `npm test -- tests/session-lifecycle.test.ts tests/writer-key-security.test.ts` | Three failures: premature signed-in state, late result after Stop, ciphertext interpreted as plaintext | Three tests passed |
+| `npm test -- tests/session-lifecycle.test.ts` | Two failures: premature signed-in state, late result after Stop | Tests passed (separate Anthropic writer-key storage was later removed) |
 | `npm test -- tests/session-settings.test.ts` | Temperature default was 0.7 rather than omitted | Four tests passed after nullable provider default |
 | `npm test -- tests/session-lifecycle.test.ts` | Disconnected login changed state to error; submitted key appeared in raw login error | Four tests passed |
 | `npm test -- tests/session-lifecycle.test.ts` | An unrelated blocked action erased the visible pending approval; a later turn's writer facts included earlier actions | Six tests passed after the two separate red-green fixes |
@@ -19,7 +19,7 @@ Each listed regression ran before its production fix. Accepted assertions stayed
 | `npm test -- tests/codex-client.test.ts tests/session-provider.integration.test.ts` | Empty model field sent as an invalid model instead of using provider default | Nineteen tests passed |
 | `npm test -- tests/window-security.test.ts` | Thirteen initial window-boundary failures, then one embedded-frame navigation failure | Sixteen tests passed |
 | `npm test -- tests/preload-build.test.ts` | Four failures; actual emitted ESM preload could not execute in the restricted runtime | Four tests passed using bundled CommonJS preload |
-| `npx vitest run writer/anthropic-client.test.ts writer/index.test.ts` | Four failures: pre-aborted request started, repair ran after cancellation, approval requests ignored cancellation | Sixteen tests passed |
+| `npx vitest run writer/llm-client.test.ts writer/index.test.ts` | Earlier Anthropic-only client failures (pre-abort, repair-after-cancel) | Writer suite updated for shared-provider single-pass rewrite |
 | `npm test -- tests/ipc-security.test.ts` | No scoped clipboard-copy operation existed while browser clipboard permission was denied | Four tests passed after a write-only IPC action with sender and size checks |
 
 Provider, Guardian, and Codex transport red evidence is in `verification-providers.md`, `verification-security.md`, and `verification-codex.md`.

@@ -1,35 +1,27 @@
 /**
  * Deliberate Lite — WriterService for Lalime.
- * One Opus reply pass (+ optional repair), never the full multi-minute pipeline.
+ * One lightweight rewrite pass (+ local lint/safe-fixes), no multi-stage repair.
+ * Uses the same provider/model the live agent already connected.
  */
 
-import { AnthropicClient, type AnthropicTransport } from "./anthropic-client.js";
-import { applyEdits, validate } from "./edits.js";
+import { validate } from "./edits.js";
 import type { FactsPacket } from "./facts.js";
-import { applySafeLocalFixes, lintReply, wordCount } from "./lint.js";
+import { applySafeLocalFixes } from "./lint.js";
+import { WriterLlmClient, type WriterLlmOptions } from "./llm-client.js";
 import {
   approvalLineSchema,
   buildWriterSystemPrompt,
-  DELIBERATE_MODEL,
-  readDocumentSchema,
-  reviewEditsSchema,
   stageInstructions,
-  verifyClaritySchema,
 } from "./stages.js";
 
-export interface WriterServiceOptions {
-  apiKey: string;
-  model?: string;
-  fetchImpl?: AnthropicTransport;
+export interface WriterServiceOptions extends WriterLlmOptions {
   replyTimeoutMs?: number;
-  repairTimeoutMs?: number;
   approvalTimeoutMs?: number;
 }
 
 export interface ComposeReplyResult {
   text: string;
   source: "deliberate" | "fallback";
-  repaired?: boolean;
   error?: string;
 }
 
@@ -40,23 +32,18 @@ export interface ApprovalGlossResult {
 }
 
 export class WriterService {
-  private readonly client: AnthropicClient;
-  private readonly repairClient: AnthropicClient;
+  private readonly client: WriterLlmClient;
   private readonly system: string;
   private readonly approvalTimeoutMs: number;
 
   constructor(options: WriterServiceOptions) {
-    this.client = new AnthropicClient({
+    this.client = new WriterLlmClient({
+      providerId: options.providerId,
+      model: options.model,
       apiKey: options.apiKey,
-      model: options.model ?? DELIBERATE_MODEL,
+      baseUrl: options.baseUrl,
       fetchImpl: options.fetchImpl,
       timeoutMs: options.replyTimeoutMs ?? 20_000,
-    });
-    this.repairClient = new AnthropicClient({
-      apiKey: options.apiKey,
-      model: options.model ?? DELIBERATE_MODEL,
-      fetchImpl: options.fetchImpl,
-      timeoutMs: options.repairTimeoutMs ?? 15_000,
     });
     this.system = buildWriterSystemPrompt();
     this.approvalTimeoutMs = options.approvalTimeoutMs ?? 2_500;
@@ -80,30 +67,16 @@ export class WriterService {
         JSON.stringify(facts, null, 2),
       ].join("\n");
 
-      const first = await this.client.createMessage({
+      const first = await this.client.complete({
         system: this.system,
         user,
-        effort: "low",
-        stream: true,
         onDelta: opts.onDelta,
         signal: opts.signal,
       });
       if (opts.signal?.aborted) throw new Error("Writing was stopped.");
 
-      let text = applySafeLocalFixes(first.text.trim());
-      const findings = lintReply(text);
-      const needsRepair = findings.length > 0 || wordCount(text) > 120;
-      if (!needsRepair) {
-        return { text, source: "deliberate" };
-      }
-
-      try {
-        const repaired = await this.repairOnce(text, facts, opts.signal);
-        if (repaired) return { text: repaired, source: "deliberate", repaired: true };
-      } catch {
-        // keep first draft
-      }
-      return { text, source: "deliberate", repaired: false };
+      const text = applySafeLocalFixes(first.text.trim());
+      return { text, source: "deliberate" };
     } catch (err) {
       return {
         text: fallback,
@@ -136,24 +109,24 @@ export class WriterService {
             targetHint: input.targetHint ?? "",
           }),
         ].join("\n");
-        const result = await this.client.createMessage({
+        const result = await this.client.complete({
           system: this.system,
           user,
-          effort: "low",
-          jsonSchema: approvalLineSchema as unknown as Record<string, unknown>,
+          json: true,
           signal: controller.signal,
         });
-        const parsed = JSON.parse(result.text) as { whatHappens?: string; undo?: string };
+        const parsed = JSON.parse(stripJsonFence(result.text)) as {
+          whatHappens?: string;
+          undo?: string;
+        };
         if (!validate(parsed, approvalLineSchema)) return { used: false };
         const what = (parsed.whatHappens ?? "").trim();
         const undo = (parsed.undo ?? "").trim();
         if (!what) return { used: false };
         if (input.targetHint && !what.toLowerCase().includes(input.targetHint.toLowerCase().slice(0, 12))) {
-          // Soft check: still allow if target is empty/short
           if (input.targetHint.length > 8) return { used: false };
         }
         if (input.undoable === false && /undo|put .+ back/i.test(undo)) {
-          // Contradicts undoable=false
           return { used: false, whatHappens: what, undo: "This cannot be undone automatically." };
         }
         return { used: true, whatHappens: what, undo: undo || undefined };
@@ -165,75 +138,16 @@ export class WriterService {
       return { used: false };
     }
   }
+}
 
-  private async repairOnce(
-    draft: string,
-    facts: FactsPacket,
-    signal?: AbortSignal,
-  ): Promise<string | null> {
-    const read = await this.repairClient.createMessage({
-      system: this.system,
-      user: [
-        stageInstructions.read_document,
-        "",
-        JSON.stringify({ draft, factsOutcome: facts.outcome }),
-      ].join("\n"),
-      effort: "medium",
-      jsonSchema: readDocumentSchema as unknown as Record<string, unknown>,
-      signal,
-    });
-    const reading = JSON.parse(read.text) as {
-      issues?: Array<{ quote: string; problem: string }>;
-    };
-    if (!validate(reading, readDocumentSchema)) return null;
-
-    const review = await this.repairClient.createMessage({
-      system: this.system,
-      user: [
-        stageInstructions.review_document,
-        "",
-        JSON.stringify({ draft, issues: reading.issues ?? [] }),
-      ].join("\n"),
-      effort: "medium",
-      jsonSchema: reviewEditsSchema as unknown as Record<string, unknown>,
-      signal,
-    });
-    const editsPayload = JSON.parse(review.text) as {
-      edits?: Array<{ before: string; after: string }>;
-    };
-    if (!validate(editsPayload, reviewEditsSchema)) return null;
-    if (!editsPayload.edits?.length) return draft;
-
-    const candidate = applyEdits(draft, editsPayload.edits);
-    const verdictRaw = await this.repairClient.createMessage({
-      system: this.system,
-      user: [
-        stageInstructions.verify_clarity,
-        "",
-        JSON.stringify({
-          originalDraft: draft,
-          candidateDraft: candidate,
-          issues: reading.issues ?? [],
-        }),
-      ].join("\n"),
-      effort: "medium",
-      jsonSchema: verifyClaritySchema as unknown as Record<string, unknown>,
-      signal,
-    });
-    const verdict = JSON.parse(verdictRaw.text) as {
-      meaningPreserved?: boolean;
-      clarityImproved?: boolean;
-      voicePreserved?: boolean;
-    };
-    if (!validate(verdict, verifyClaritySchema)) return null;
-    if (verdict.meaningPreserved && verdict.clarityImproved && verdict.voicePreserved) {
-      return applySafeLocalFixes(candidate);
-    }
-    return null;
-  }
+function stripJsonFence(text: string): string {
+  const trimmed = text.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  return fenced ? fenced[1].trim() : trimmed;
 }
 
 export { buildFactsPacket } from "./facts.js";
 export type { FactsPacket, FactsOutcome, FactsAction } from "./facts.js";
 export { lintReply, applySafeLocalFixes } from "./lint.js";
 export { applyEdits, validate } from "./edits.js";
+export type { WriterLlmOptions, WriterTransport } from "./llm-client.js";
